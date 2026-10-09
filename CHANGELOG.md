@@ -2,6 +2,48 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [2.5] — 2026-10-09 — server-side kill-switch + honest live telemetry
+
+### Fixed (QA round: agent-browser audit + code review)
+- Row D (analytics + hunt clock) sat outside `<main>` since v2.4, so the
+  8/4 grid split was ignored and both panels rendered full width stacked.
+  Moved inside the grid; verified 822/404 side-by-side in the browser.
+- Live mode fabricated broker telemetry: "Paper 1ms" latency and a hardcoded
+  TREND_UP 71% regime rendered even when the bot had been silent for hours.
+  Live state now comes from `data/heartbeat.json` — a stale/missing
+  heartbeat renders "bot stale"/"no bot heartbeat" chips, an "awaiting"
+  regime panel, an honest radar empty state, and broker LEDs with no
+  invented latency. Nothing is fabricated while the bot is silent.
+- Trades table lost the mode on sort (empty live table showed the wrong
+  empty-state message after clicking a header).
+- CSS: removed a duplicated 65-line style block; fixed `.lrow .ln2`
+  referencing an undefined `--fg2` variable.
+- Price chip showed "XAU 0.00" when the heartbeat carried no price
+  (`Number(null)` is 0); null price now hides the chip.
+
+### Added
+- **Real kill-switch**: the console's standby button POSTs `/api/standby`,
+  which writes `data/standby.flag`; the running bot skips NEW entries while
+  the flag exists (exits/position management keep running). GET+POST
+  `/api/standby`, `bot.standby_on()` / `bot.set_standby()`.
+- **Bot liveness chip + richer heartbeats**: `_write_heartbeat` now carries
+  last price, session and the last classified regime dict; the console shows
+  `bot PAPER · Xs ago` (green), `bot stale · Xm ago` (amber) or
+  `no bot heartbeat` (grey).
+- **News radar panel** + `GET /api/news`: upcoming events from the bot's
+  cached ForexFactory calendar with impact coloring (high/medium/low) and
+  countdowns; meta shows the next high-impact event or "clear".
+- **Session map**: 24 h UTC strip in the regime panel (asia/london/overlap/
+  ny/off bands, green hunt-window outline, live "now" cursor, hour ticks).
+- **R-multiple column** in the trades table (`pnl / planned risk` — the
+  locked geometry's honest unit) with numeric right-alignment for
+  size/entry/pnl/r columns.
+- **Drawdown shading** on the equity curve: dashed running-peak line with a
+  red fill between peak and equity (invisible while equity IS the peak).
+- Pages mock embeds news + the new state fields; CI hermetic check now
+  asserts the kill-switch round-trip, news parsing, R column, and that the
+  live branch fabricates neither regime nor dims.
+
 ## [2.4] — 2026-10-09 — honest zero-state console + analytics layer
 
 ### Fixed (QA round: agent-browser audit found 5 bugs)

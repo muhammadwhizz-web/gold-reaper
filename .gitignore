@@ -29,3 +29,6 @@ data/dashboard.log
 data/reaper.err.log
 ml/models/
 data/heartbeat.json
+
+# console kill-switch runtime flag
+data/standby.flag

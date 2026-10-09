@@ -15,7 +15,7 @@ In live mode an empty journal renders an honest empty state, never mock
 rows (the brand contract: losses published, fabrications never).
 
 Endpoints: /api/state · /api/trades · /api/metrics · /api/track_record
-           /api/stream (SSE)
+           /api/news · GET+POST /api/standby (kill-switch) · /api/stream (SSE)
 
 Run:   python dashboard/app.py          ->  http://localhost:8080
 """
@@ -26,6 +26,7 @@ import csv
 import json
 import random
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,6 +41,10 @@ sys.path.insert(0, str(ROOT))
 
 STATIC = Path(__file__).resolve().parent / "static"
 DATA = ROOT / "data"
+HEARTBEAT_FILE = DATA / "heartbeat.json"
+STANDBY_FILE = DATA / "standby.flag"
+NEWS_FILE = DATA / "news" / "calendar_latest.json"
+HEARTBEAT_FRESH_S = 180  # mirrors watchdog staleness threshold
 
 app = FastAPI(title="GOLD//REAPER", docs_url=None, redoc_url=None)
 
@@ -67,6 +72,101 @@ def _brokers_mock() -> list[dict]:
         {"name": "Bitget", "state": "standby", "latency_ms": None},
         {"name": "Paper", "state": "up", "latency_ms": 1},
     ]
+
+
+def _brokers_live(heartbeat: dict | None) -> list[dict]:
+    """Honest broker rows for live mode: never invent latency.
+    Paper reflects real bot liveness; the others report what we know
+    (standby = configured-but-not-primary / not connected here)."""
+    fresh = bool(heartbeat and heartbeat.get("fresh"))
+    mode = (heartbeat or {}).get("mode") or "PAPER"
+    paper_state = "up" if fresh else "down"
+    return [
+        {"name": "MT5 (Exness)", "state": "standby", "latency_ms": None},
+        {"name": "Bitget", "state": "standby", "latency_ms": None},
+        {"name": f"Paper ({mode})" if fresh else "Paper",
+         "state": paper_state, "latency_ms": None},
+    ]
+
+
+def _heartbeat_telemetry() -> dict | None:
+    """The bot's real liveness telemetry (heartbeat.json), or None.
+    fresh = written within HEARTBEAT_FRESH_S - the console renders an
+    awaiting state, never fabricated regime/broker data, when stale."""
+    if not HEARTBEAT_FILE.exists():
+        return None
+    try:
+        hb = json.loads(HEARTBEAT_FILE.read_text())
+        ts = float(hb.get("ts", 0))
+        age = max(0, int(time.time() - ts))
+        reg = hb.get("regime") if isinstance(hb.get("regime"), dict) else None
+        conf = reg.get("probability") if reg else None
+        return {
+            "age_s": age,
+            "fresh": age <= HEARTBEAT_FRESH_S,
+            "iso": str(hb.get("iso", "")),
+            "version": str(hb.get("version", "")),
+            "mode": str(hb.get("mode", "")),
+            "price": hb.get("price"),
+            "session": hb.get("session"),
+            "regime": ({"name": reg.get("regime"),
+                        "confidence": conf, "engine": reg.get("engine")}
+                       if reg else None),
+            "standby": bool(hb.get("standby")),
+        }
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def standby_state() -> bool:
+    """Kill-switch state: the flag file's existence IS the state."""
+    return STANDBY_FILE.exists()
+
+
+def set_standby(on: bool) -> bool:
+    try:
+        if on:
+            STANDBY_FILE.parent.mkdir(parents=True, exist_ok=True)
+            STANDBY_FILE.write_text(json.dumps({
+                "on": True, "ts": time.time(), "source": "dashboard"}),
+                encoding="utf-8")
+        else:
+            STANDBY_FILE.unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
+    return standby_state()
+
+
+def news_payload(limit: int = 8) -> dict:
+    """Upcoming calendar events from the bot's cached ForexFactory pull.
+    Informational only - the bot enforces its own news blackout."""
+    if not NEWS_FILE.exists():
+        return {"events": [], "fetched_at": None,
+                "source": "no calendar cached - bot fetches every 30 min"}
+    try:
+        raw = json.loads(NEWS_FILE.read_text())
+        now = datetime.now(timezone.utc)
+        out: list[dict] = []
+        for ev in raw.get("events", []):
+            try:
+                when = datetime.fromisoformat(str(ev.get("date", "")))
+            except ValueError:
+                continue
+            mins = round((when - now).total_seconds() / 60, 1)
+            if mins < -720:  # skip day-old past events
+                continue
+            out.append({"title": str(ev.get("title", "?")),
+                        "country": str(ev.get("country", "")),
+                        "impact": str(ev.get("impact", "")),
+                        "iso": when.isoformat(),
+                        "min_until": mins})
+        out.sort(key=lambda e: e["min_until"])
+        return {"events": out[:limit],
+                "fetched_at": str(raw.get("fetched_at", "")),
+                "source": "data/news/calendar_latest.json"}
+    except Exception:  # noqa: BLE001
+        return {"events": [], "fetched_at": None,
+                "source": "calendar cache unreadable"}
 
 
 # ─────────────────────────────────────────────────────────── data providers
@@ -167,6 +267,9 @@ def state_payload() -> dict:
             risk = json.loads(risk_file.read_text())
             eq = risk.get("equity", 0)
             hist = _equity_history_from_fills()
+            hb = _heartbeat_telemetry()
+            fresh_regime = hb.get("regime") if (hb and hb["fresh"]) else None
+            fresh_session = hb.get("session") if (hb and hb["fresh"]) else None
             return {
                 "mode": "live",
                 "ts": datetime.now(timezone.utc).isoformat(),
@@ -184,11 +287,13 @@ def state_payload() -> dict:
                 "equity_source": "fills" if hist else "flat",
                 "equity_history": hist or _flat_equity(eq),
                 "position": None,
-                "session": "london/ny overlap",
-                "regime": {"name": "TREND_UP", "confidence": 0.71,
-                           "engine": "rules"},
-                "dims": _dims_mock(),
-                "brokers": _brokers_mock(),
+                "heartbeat": hb,
+                "standby": standby_state(),
+                "price": hb.get("price") if hb else None,
+                "session": fresh_session,
+                "regime": fresh_regime,
+                "dims": None,  # per-dimension values only exist inside the bot
+                "brokers": _brokers_live(hb),
                 "streak": max(0, risk.get("wins", 0) - risk.get("losses", 0)),
                 "hunt_window": "12-14 UTC",
                 "geometry": "SL 1.2xATR · TP 2.0R · risk 1%",
@@ -217,6 +322,9 @@ def state_payload() -> dict:
             "sl": 2417.90, "tp": 2431.20,
             "opened": "12:04:33 UTC", "be": True,
         },
+        "heartbeat": None,
+        "standby": False,
+        "price": None,
         "session": "london/ny overlap",
         "regime": {"name": "TREND_UP", "confidence": 0.71, "engine": "rules"},
         "dims": _dims_mock(),
@@ -267,6 +375,7 @@ def _mock_trades(limit: int = 20) -> list[dict]:
             "ts": f"2026-10-0{8 - i // 5} {9 + i % 9:02d}:{(i * 17) % 60:02d} UTC",
             "side": side, "size_oz": f"{round(rng.uniform(0.02, 0.05), 3):.3f}",
             "entry": f"{px:,.2f}", "pnl": f"{pnl:+.2f}",
+            "r": f"{pnl / 100.0:+.2f}",  # mock risk = 1% of the 10k account
             "regime": rng.choice(["TREND_UP", "TREND_DOWN", "RANGE"]),
             "session": rng.choice(["LONDON_NY_OVERLAP", "LONDON"]),
         })
@@ -279,8 +388,10 @@ def _is_live() -> bool:
 
 
 def trades_payload(limit: int = 20) -> dict:
-    """Live: entry journal enriched with realized pnl (k-th fill closes the
-    k-th entry - the bot holds one position at a time). Mock otherwise."""
+    """Live: entry journal enriched with realized pnl + R multiple
+    (k-th fill closes the k-th entry - the bot holds one position at a
+    time). R = realized pnl / planned risk, the honest unit of the
+    locked geometry. Mock otherwise."""
     entries = _entries()
     fills = _fills()
     if entries or fills:
@@ -291,12 +402,23 @@ def trades_payload(limit: int = 20) -> dict:
                 entry = f"{float(str(e.get('entry', '')).replace(',', '')):,.2f}"
             except (TypeError, ValueError):
                 entry = str(e.get("entry", "—"))
+            if i < len(fills):
+                pnl = fills[i]["pnl"]
+                try:
+                    risk = float(str(e.get("risk_usd", "")).replace(",", ""))
+                    r = f"{pnl / risk:+.2f}" if risk > 0 else "—"
+                except (TypeError, ValueError):
+                    r = "—"
+                pnl_s = f"{pnl:+.2f}"
+            else:
+                pnl_s, r = "—", "—"
             rows.append({
                 "ts": ts + " UTC" if ts else "—",
                 "side": e.get("side", "—"),
                 "size_oz": e.get("size_oz", "—"),
                 "entry": entry,
-                "pnl": f"{fills[i]['pnl']:+.2f}" if i < len(fills) else "—",
+                "pnl": pnl_s,
+                "r": r,
                 "regime": e.get("regime", "—"),
                 "session": e.get("session", "—"),
             })
@@ -305,8 +427,8 @@ def trades_payload(limit: int = 20) -> dict:
             f = fills[j]
             rows.append({"ts": f["ts"][:19].replace("T", " ") + " UTC",
                          "side": "—", "size_oz": "—", "entry": "—",
-                         "pnl": f"{f['pnl']:+.2f}", "regime": "—",
-                         "session": "—"})
+                         "pnl": f"{f['pnl']:+.2f}", "r": "—",
+                         "regime": "—", "session": "—"})
         return {"mode": "live", "rows": rows[::-1][:limit]}
     if _is_live():
         # live account, zero activity yet - honest empty state, not mock rows
@@ -505,6 +627,24 @@ def api_metrics() -> JSONResponse:
 @app.get("/api/track_record")
 def api_track_record() -> JSONResponse:
     return JSONResponse(track_record_payload())
+
+
+@app.get("/api/news")
+def api_news() -> JSONResponse:
+    return JSONResponse(news_payload())
+
+
+@app.get("/api/standby")
+def api_standby_get() -> JSONResponse:
+    return JSONResponse({"on": standby_state(),
+                         "note": "flag file gates NEW entries only; "
+                                 "open positions keep being managed"})
+
+
+@app.post("/api/standby")
+def api_standby_post(body: dict) -> JSONResponse:
+    on = bool(body.get("on"))
+    return JSONResponse({"on": set_standby(on)})
 
 
 async def _stream():

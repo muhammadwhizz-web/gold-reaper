@@ -1,6 +1,6 @@
 [project]
 name = "gold-reaper"
-version = "2.4.0"
+version = "2.5.0"
 description = "Autonomous XAU/USD trading system - walk-forward validated - MT5 + Bitget + paper - dark-terminal dashboard"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"

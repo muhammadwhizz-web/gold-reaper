@@ -26,15 +26,28 @@ python dashboard/app.py          # http://localhost:8080
 
 Auto-detects a running bot: if `data/apex_risk.json` exists it renders live
 state; otherwise a seeded mock session. Includes SSE log tail (seeds recent
-audit history, then tails live), equity curve, position card, trades table
-with CSV export, trade analytics (profit factor, win rate, expectancy, max
-drawdown, PnL distribution histogram, underwater curve, per-regime split),
-hunt-window clock with next-3-windows countdown, and matrix rain canvas.
+audit history, then tails live), equity curve with running-peak drawdown
+shading, position card, trades table with R-multiple column and CSV export,
+trade analytics (profit factor, win rate, expectancy, max drawdown, PnL
+distribution histogram, underwater curve, per-regime split), hunt-window
+clock with next-3-windows countdown, 24 h session map with a live UTC
+cursor, news radar with high-impact countdowns, bot-liveness LED (from
+`data/heartbeat.json` — stale heartbeat shows an amber "bot stale" chip and
+honest awaiting states instead of fabricated regime/broker data), a real
+kill-switch, and a matrix rain canvas.
+
+The kill-switch is server-side: the top-bar **standby** button (or `POST
+/api/standby {"on": true}`) writes `data/standby.flag`; the running bot
+skips NEW entries while the flag exists (exits/management keep running).
+State is authoritative from the flag file, so every console and `GET
+/api/standby` agree.
 
 Honesty contract: in live mode an empty journal renders empty states
 ("no fills yet") and a flat equity line at the real balance - never mock
-rows or a fake curve. Endpoints: `/api/state`, `/api/trades`, `/api/metrics`,
-`/api/track_record`, `/api/stream`.
+rows or a fake curve. Regime/dimension panels render "awaiting" until the
+bot's heartbeat supplies real classified data. Endpoints: `/api/state`,
+`/api/trades`, `/api/metrics`, `/api/track_record`, `/api/news`,
+`GET+POST /api/standby`, `/api/stream`.
 
 ## Layer 3 — Record the video
 

@@ -37,10 +37,32 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 HEARTBEAT_FILE = ROOT / "data" / "heartbeat.json"
 PID_FILE = ROOT / "data" / "bot.pid"
+STANDBY_FILE = ROOT / "data" / "standby.flag"
 UPDATE_REPO = "muhammadwhizz-web/gold-reaper"
+
+
+def standby_on() -> bool:
+    """True while the dashboard kill-switch flag exists (entries paused).
+    Exits/management keep running - only NEW entries are gated."""
+    return STANDBY_FILE.exists()
+
+
+def set_standby(on: bool, source: str = "dashboard") -> bool:
+    """Write/remove the kill-switch flag. Returns the resulting state."""
+    try:
+        if on:
+            STANDBY_FILE.parent.mkdir(parents=True, exist_ok=True)
+            STANDBY_FILE.write_text(json.dumps({
+                "on": True, "ts": time.time(), "source": source}),
+                encoding="utf-8")
+        else:
+            STANDBY_FILE.unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
+    return standby_on()
 
 from brokers.base import BrokerBase  # noqa: E402
 from brokers.factory import connect_with_failover, create_broker  # noqa: E402
@@ -176,8 +198,13 @@ class MetaModelServer:
 import json  # noqa: E402  (kept after imports used above)
 
 
-def _write_heartbeat(mode: str, equity: float | None) -> None:
-    """Liveness file for watchdog.py and the tray. Cheap, atomic-enough."""
+def _write_heartbeat(mode: str, equity: float | None,
+                     price: float | None = None,
+                     regime: dict | None = None,
+                     session: str | None = None) -> None:
+    """Liveness file for watchdog.py, the tray and the dashboard console.
+    Carries the last classified telemetry so the console never has to
+    fabricate regime/broker state while the bot is silent."""
     try:
         HEARTBEAT_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = HEARTBEAT_FILE.with_suffix(".tmp")
@@ -188,6 +215,10 @@ def _write_heartbeat(mode: str, equity: float | None) -> None:
             "version": VERSION,
             "mode": mode,
             "equity": equity,
+            "price": price,
+            "regime": regime,
+            "session": session,
+            "standby": standby_on(),
         }), encoding="utf-8")
         tmp.replace(HEARTBEAT_FILE)
     except Exception:  # noqa: BLE001
@@ -219,6 +250,9 @@ class ReaperApexBot:
         self._last_maintenance = 0.0
         self._last_update_check = 0.0
         self._last_equity: float | None = None
+        self._last_price: float | None = None
+        self._last_regime: dict | None = None
+        self._last_session: str | None = None
         self._mode = "PAPER" if (getattr(cfg, "paper", False)
                                  or cfg.broker == "PAPER") else cfg.broker
 
@@ -298,7 +332,10 @@ class ReaperApexBot:
         try:
             while self.running:
                 self.tick()
-                _write_heartbeat(self._mode, self._last_equity)
+                _write_heartbeat(self._mode, self._last_equity,
+                                 price=self._last_price,
+                                 regime=self._last_regime,
+                                 session=self._last_session)
                 self._maintenance()
                 time.sleep(self.cfg.poll_seconds)
         except KeyboardInterrupt:
@@ -364,6 +401,11 @@ class ReaperApexBot:
         if h1 is None or len(h1) < 260 or h4 is None or len(h4) < 30:
             self._heartbeat("warming up: not enough candles")
             return
+        try:
+            self._last_price = float(h1["close"].iloc[-1])
+            self._last_session = session_of(ts)
+        except (TypeError, ValueError, KeyError):
+            pass
         pd_td = pd.Timedelta("1h")
         h1_closed = h1.iloc[:-1] if h1.index[-1] > ts - pd_td else h1
         last_bar = h1_closed.index[-1]
@@ -396,11 +438,17 @@ class ReaperApexBot:
             self._heartbeat("pre-weekend-close blackout")
             return
 
+        # dashboard kill-switch: exits above still ran; entries stop here
+        if standby_on():
+            self._heartbeat("standby flag set - entries paused (kill-switch)")
+            return
+
         # ── APEX dimension assembly ─────────────────────────────────
         if self._feed is None or self._news is None or self._apexx is None:
             return  # components not initialised
         feat_row = self._feed.current(h1_closed, ts)
         regime = self._regime.classify(h1_closed.tail(600))
+        self._last_regime = regime.to_dict()
         news_state = self._news.state(ts)
         ml_prob = self._meta.prob(feat_row)
 

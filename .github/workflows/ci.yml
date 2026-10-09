@@ -172,11 +172,16 @@ jobs:
           tmp = pathlib.Path(tempfile.mkdtemp())
           real_data = da.DATA
           da.DATA = tmp
+          da.HEARTBEAT_FILE = tmp / "heartbeat.json"
+          da.STANDBY_FILE = tmp / "standby.flag"
+          da.NEWS_FILE = tmp / "news" / "calendar_latest.json"
           # mock branch: empty data dir -> seeded session, coherent analytics
           s = da.state_payload(); t = da.trades_payload(); m = da.metrics_payload()
           assert {"equity","day_pnl","equity_history"} <= set(s)
           assert s["mode"] == "mock" and len(s["equity_history"]) >= 2
+          assert s["standby"] is False and s["heartbeat"] is None
           assert t["mode"] == "mock" and len(t["rows"]) >= 1
+          assert "r" in t["rows"][0]  # R-multiple column present
           assert m["source"] == "mock" and m["n"] >= 1 and "histogram" in m
           assert m["n"] == len(t["rows"])  # analytics agree with the table
           print("demo layers mock OK | trades:", len(t["rows"]),
@@ -189,7 +194,27 @@ jobs:
           assert len(set(s2["equity_history"])) == 1  # flat at real equity
           assert t2["mode"] == "live" and t2["rows"] == []
           assert m2["source"] == "live" and m2["n"] == 0
+          assert s2["regime"] is None and s2["dims"] is None  # nothing fabricated
+          assert s2["standby"] is False
           print("demo layers live OK | honest flat equity + empty states")
+          # kill-switch contract: flag file gates entries (hermetic dir)
+          assert da.set_standby(True) is True
+          assert da.standby_state() is True
+          s3 = da.state_payload()
+          assert s3["standby"] is True
+          assert da.set_standby(False) is False and da.standby_state() is False
+          print("kill-switch OK | flag write/clear round-trip")
+          # news endpoint: honest empty without a cache file
+          n0 = da.news_payload()
+          assert n0["events"] == [] and "cached" in n0["source"]
+          (tmp / "news").mkdir(exist_ok=True)
+          da.NEWS_FILE.write_text(json.dumps({"fetched_at": "t", "events": [
+              {"title": "Non-Farm Payrolls", "country": "USD", "impact": "High",
+               "date": "2099-01-01T14:30:00+00:00"}]}))
+          n1 = da.news_payload()
+          assert len(n1["events"]) == 1 and n1["events"][0]["impact"] == "High"
+          assert n1["events"][0]["min_until"] > 0
+          print("news radar OK | parsed", len(n1["events"]), "event(s)")
           da.DATA = real_data
           PY
 
