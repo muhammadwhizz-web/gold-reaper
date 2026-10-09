@@ -180,7 +180,7 @@ jobs:
           PY
           # inject the static dataset only into the Pages copy (the FastAPI
           # page stays network-driven)
-          sed -i 's|<script src="vendor/chart.umd.min.js"></script>|<script src="vendor/chart.umd.min.js"></script><script src="mock-data.js"></script>|' _site/index.html
+          sed -i 's|<script src="vendor/chart.umd.min.js"></script>|<script src="vendor/chart.umd.min.js"></script><script src="mock-data.js?v=v3.1.0"></script>|' _site/index.html
           grep -c 'mock-data.js' _site/index.html
           cat > _site/.nojekyll <<'EOF'
           EOF
