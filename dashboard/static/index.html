@@ -1685,6 +1685,9 @@ buildEqChart();
 buildRadarChart();
 tickClock(); setInterval(() => { tickClock(); huntTick(); renderTimeline(); }, 1000);
 rainSize();
+refreshFavLED();  // draw the LED favicon immediately — idle state included
+                  // (offline/standby/hunt flips re-draw it; without this the
+                  // static Pages build never engaged the LED at all)
 if (rainPref === "1") setRain(true, false);
 else if (rainPref === "0") setRain(false, false);
 window.addEventListener("resize", () => { rainSize(); if (rainOn && RM) rainStatic(); });

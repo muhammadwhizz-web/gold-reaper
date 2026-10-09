@@ -247,7 +247,8 @@ jobs:
                          'id="tfill"', 'bechip trail', 'document.title',
                          'addEventListener("state"', 'function drawFav',
                          'function openDrawer', 'id="kbdHelp"',
-                         'id="verChip"', 'stateLoop'):
+                         'id="verChip"', 'stateLoop',
+                         'draw the LED favicon immediately'):
               assert marker in html, f"missing marker: {marker}"
           print("static console markers OK | heat strip + trail chip + title"
                 " + sse-push + favicon LED + drawer + help + version chip")
