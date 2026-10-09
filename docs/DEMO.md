@@ -39,9 +39,14 @@ target with a glowing marker at the trade's own R), session-boundary
 equity marks on the curve (the bot snapshots real equity at every
 session transition into `data/equity_marks.csv`; the console switches
 to a real HH:MM UTC axis with a glowing dot per mark — the live curve
-moves between fills, honestly), a transport LED in the stream header
+moves between fills, honestly; a new mark lands as one quiet info
+toast, a dashed crosshair rides the curve's hover, and the tooltip plus
+the equity chip report the walk's Δ against the session-open baseline),
+a transport LED in the stream header
 (`PUSH` when SSE drives state, fallback label while polling — drops and
-rejoins toast once each), hunt-window
+rejoins toast once each, and the console re-dials with a real
+exponential backoff — 1s → 30s cap — instead of hammering a dead
+socket), a copy-json button (or `c`) inside the trade drawer, hunt-window
 clock with next-3-windows countdown (mirrored in the browser-tab title,
 with a canvas-drawn favicon LED: pulsing green while the window is open,
 amber under standby, red offline), 24 h session map with a live UTC cursor,

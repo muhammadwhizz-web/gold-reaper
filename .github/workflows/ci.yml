@@ -246,7 +246,7 @@ jobs:
           for marker in ('id="toasts"', 'function showToast', 'aria-live="polite"',
                          'function knavMove', 'function applyKnav', 'kfocus',
                          'id="mxRegStrip"', 'function renderRegStrip',
-                         'plugins: [endChip]', 'id: "endChip"',
+                         'plugins: [xhair, endChip]', 'id: "endChip"',
                          'journal exported'):
               assert marker in html, f"missing marker: {marker}"
           print("v2.8 OK | toasts + j/k nav + regime sequence + end chip")
@@ -274,6 +274,15 @@ jobs:
                          'session mark'):
               assert marker in html, f"missing marker: {marker}"
           print("v2.9 console OK | transport LED + e-export + r-band + marks axis")
+          # v3.0 contracts: crosshair · mark toast · walk delta · sse backoff · copy json
+          for marker in ('id: "xhair"', 'plugins: [xhair, endChip]',
+                         'EQ_MARK_SEEN', 'session mark · equity $',
+                         'const BACKOFF_S', 'function scheduleReconnect',
+                         'function wireSocket', 'id="dCopy"',
+                         'async function copyTradeJson', 'k === "c"',
+                         '" · Δ "', 'button:focus-visible'):
+              assert marker in html, f"missing marker: {marker}"
+          print("v3.0 console OK | crosshair + mark toast + walk delta + backoff + copy json")
           # static console carries the new contract markers
           html = open("dashboard/static/index.html", encoding="utf-8").read()
           for marker in ('id="ledgerHeat"', 'function renderHeat',

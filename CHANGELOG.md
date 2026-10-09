@@ -2,6 +2,48 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [3.0] — 2026-10-10 — live-curve completion · operator ergonomics
+
+### Added
+- **Session-mark toast**: when a NEW session-boundary equity mark lands
+  on the live walk, the console drops one quiet info toast —
+  "session mark · equity $1,001.23 @ 13:00 UTC". The first paint never
+  toasts (a boot replay would be noise, not signal); fill-only index
+  shifts stay silent. Closes the v2.9 feedback loop: the operator now
+  *sees* the curve acquiring a snapshot, not just the dot.
+- **Crosshair on the equity curve**: a dashed vertical guide rides the
+  chart's native hover (Chart.js plugin, zero new listeners), and the
+  tooltip now reports the walk's Δ against the session-open baseline —
+  "equity $1,012.34 · Δ +$12.34", plus the existing "· session mark"
+  flag on snapshot points.
+- **Walk delta chip**: the equity-source chip gains the live walk's
+  net movement — "curve · fills + session marks · Δ +$12.34" (hidden
+  when the walk is flat, so an honest $1,000 line says nothing).
+- **SSE exponential backoff**: on stream error the console now closes
+  the socket itself and re-dials with a real backoff ladder
+  (1s → 2s → 4s → 8s → 16s → 30s cap) instead of relying on the
+  browser's fixed ~3s retry — a dead server stops getting hammered.
+  The 5s state poll keeps data flowing throughout; the sled chip keeps
+  its push/poll LED and now carries the reconnect plan in its tooltip
+  ("reconnecting in Ns · attempt M"); counters reset on reattach.
+- **Drawer copy-JSON**: the trade drawer gains a "copy json" button and
+  a `c` shortcut (drawer open) — one keystroke puts the raw journal row
+  on the clipboard, with toast acknowledgment ("trade json copied · row
+  N") and an honest warning if the browser blocks the clipboard.
+- **Focus-visible rings**: every button in the console draws a green
+  focus ring when keyboard-navigated (accessibility pass — the console
+  is keyboard-first, it should look like it).
+
+### Changed
+- QA shim (`qa-tools/build_gr_qa.sh` replica) exercises the full v3.0
+  transport lifecycle: the FakeES stub now supports `close()` and
+  replays its seeded log tail once, so the backoff re-dial renders
+  without duplicating boot lines.
+- Pages mock replays the v3.0 contract (walk Δ, crosshair-ready
+  tooltips) so the demo shows the full layer; CI hermetic checks assert
+  the new console markers (xhair, EQ_MARK_SEEN, BACKOFF_S, dCopy,
+  copyTradeJson, walkDelta).
+
 ## [2.9] — 2026-10-10 — session equity marks · transport LED · r-band drawer
 
 ### Added
