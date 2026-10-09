@@ -150,7 +150,7 @@ jobs:
                   {"name": "Paper", "state": "up", "latency_ms": 1}],
               "streak": 1, "hunt_window": "12-14 UTC",
               "geometry": "SL 1.2xATR \u00b7 TP 2.0R \u00b7 risk 1%",
-              "version": "v3.1.0"},
+              "version": "v3.2.0"},
               "trades": trades, "track_record": track, "metrics": metrics}
           # news radar mock — informational countdowns (client renders them)
           mock_news = {"fetched_at": "2026-10-09T14:02:22+00:00", "events": [
@@ -180,7 +180,7 @@ jobs:
           PY
           # inject the static dataset only into the Pages copy (the FastAPI
           # page stays network-driven)
-          sed -i 's|<script src="vendor/chart.umd.min.js"></script>|<script src="vendor/chart.umd.min.js"></script><script src="mock-data.js?v=v3.1.0"></script>|' _site/index.html
+          sed -i 's|<script src="vendor/chart.umd.min.js"></script>|<script src="vendor/chart.umd.min.js"></script><script src="mock-data.js?v=v3.2.0"></script>|' _site/index.html
           grep -c 'mock-data.js' _site/index.html
           cat > _site/.nojekyll <<'EOF'
           EOF

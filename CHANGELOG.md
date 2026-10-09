@@ -2,6 +2,39 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [3.2] — 2026-10-10 — pnl heat grid · hunt attribution · toast dedup
+
+### Added
+- **PnL heat grid (weekday × hour, UTC)**: the analytics panel gains a
+  7×24 heatmap aggregated client-side from the journal — each bucket's
+  color carries the sign, its intensity the |net| relative to the
+  busiest bucket. The 12-16 UTC hunt band wears a faint brand outline
+  so the thesis reads as geometry. Tooltip per filled cell: weekday,
+  hour range, fill count, signed net. Legend chips name the best and
+  worst hour ("best TUE 15:00 +$55.79 · worst MON 09:00 −$36.39").
+  Honest empty state before the first close.
+- **Click-to-filter**: clicking a filled heat cell narrows the journal,
+  the session rollup, the regime strip, the hunt line, and the grid
+  itself to that weekday-hour bucket; an amber "✕ WED 09:00" chip
+  appears in the trades header and `esc` (or clicking the chip, or
+  re-clicking the cell) lifts it. CSV export follows the active view —
+  you export what you see, and the toast says "· filtered" when one is
+  active. Empty cells don't filter — nothing to show.
+- **Hunt-window attribution line**: under the by-session rollup, one
+  quiet line answers the strategy's core question — "hunt 12-16 utc ·
+  8t · +$94.59 · 117% of net". Share can exceed 100% when off-window
+  trades are net-negative; that is the honest number, not a bug.
+
+### Changed
+- **Toast dedup**: identical toast text inside a 4-second window is
+  dropped — a flapping SSE socket must not strobe the operator with
+  repeating "link lost / reattached" pairs. Real state changes always
+  announce.
+- Styling pass: heat-grid palette stays inside the terminal system
+  (green/red intensity ramps over the near-black base), hover ring +
+  active outline on cells, hour axis labels every 3 hours, filter chip
+  in the amber warn family.
+
 ## [3.1] — 2026-10-10 — session intelligence
 
 ### Added

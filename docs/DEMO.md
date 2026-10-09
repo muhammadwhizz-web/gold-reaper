@@ -36,7 +36,14 @@ trade analytics (profit factor, win rate, expectancy, max drawdown, PnL
 distribution histogram, underwater curve, per-regime split, and a
 by-session rollup — net / fills / win rate per trading session with a
 glowing bar scaled by |net|; with zero fills the live underwater derives
-honestly from the equity walk when it actually moves), session-tag chips
+honestly from the equity walk when it actually moves), a hunt-window
+attribution line under the rollup ("hunt 12-16 utc · 8t · +$94.59 ·
+117% of net" — the share can exceed 100% when off-window trades are
+net-negative, which is exactly the point), a weekday×hour PnL heat
+grid whose 12-16 UTC hunt band wears a faint brand outline — click any
+filled cell to filter the journal, rollups and grid to that hour (amber
+chip in the trades header, `esc` lifts it, CSV export follows the view)
+— and session-tag chips
 in the journal (overlap green / london cyan / ny amber), an
 r-multiple band inside every trade drawer (-1R stop .. entry .. +2R
 target with a glowing marker at the trade's own R), session-boundary

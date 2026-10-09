@@ -291,6 +291,16 @@ jobs:
                          'derived from the live equity walk'):
               assert marker in html, f"missing marker: {marker}"
           print("v3.1 console OK | session rollup + walk underwater + session chips")
+          # v3.2 contracts: heat grid · hunt attribution · hour filter · toast dedup
+          for marker in ('id="mxHeatGrid"', 'function renderHeatGrid',
+                         'function tsParts', 'function viewTrades',
+                         'let heatFilter', 'function clearHeatFilter',
+                         'id="mxHuntLine"', 'function renderHunt',
+                         'hunt 12-16 utc', 'const WDAYS',
+                         'lastToast', 'id="fchip"', 'class="haxis"',
+                         'hgc.hunt', 'data-n="1"'):
+              assert marker in html, f"missing marker: {marker}"
+          print("v3.2 console OK | heat grid + click filter + hunt line + toast dedup")
           # static console carries the new contract markers
           html = open("dashboard/static/index.html", encoding="utf-8").read()
           for marker in ('id="ledgerHeat"', 'function renderHeat',

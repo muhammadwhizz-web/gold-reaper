@@ -527,6 +527,47 @@ body::after {
 .ss-london { color: #00D9FF; border-color: rgba(0,217,255,.25); }
 .ss-ny { color: var(--amber); border-color: rgba(255,191,0,.25); }
 .ss-asia, .ss-off { color: var(--dim); }
+/* v3.2 · hunt-window attribution — same visual language as the session rollup */
+#mxHuntLine .srow { display: inline-flex; align-items: center; gap: 6px; }
+/* v3.2 · pnl heat grid — weekday × hour, click a cell to filter the journal.
+   The 12-16 utc hunt band wears a faint brand outline so the thesis reads
+   as geometry, not decoration. */
+.heatwrap { margin-top: 2px; }
+.hgrid {
+  display: grid; grid-template-columns: 30px repeat(24, 1fr);
+  gap: 2px; align-items: center;
+}
+.hwl { font-size: 8.5px; color: var(--dim); letter-spacing: .5px; text-align: right;
+       padding-right: 5px; font-style: normal; }
+.hgc {
+  height: 10px; border-radius: 1px; background: rgba(201,209,217,.05);
+  cursor: default;
+}
+.hgc[data-n] { cursor: pointer; }
+.hgc[data-n]:hover { outline: 1px solid var(--green); outline-offset: 0; }
+.hgc.hunt { box-shadow: inset 0 0 0 1px rgba(0,255,156,.16); }
+.hgc.on { outline: 1px solid var(--green); outline-offset: 1px; }
+.haxis {
+  display: grid; grid-template-columns: 30px repeat(24, 1fr);
+  gap: 2px; margin-top: 3px;
+}
+.haxis i { font-size: 8px; color: var(--dim); font-style: normal; text-align: center;
+           letter-spacing: 0; }
+.hempty { font-size: 10.5px; }
+.hlegend { font-style: normal; font-weight: 400; letter-spacing: .3px;
+           display: inline-flex; gap: 8px; margin-left: 8px; }
+.hlegend .hl { font-size: 9px; padding: 0 5px; border: 1px solid var(--line);
+               border-radius: 2px; }
+.hlegend .hl.g { color: var(--green); border-color: rgba(0,255,156,.3); }
+.hlegend .hl.r { color: var(--red); border-color: rgba(255,85,85,.3); }
+/* v3.2 · hour-filter chip in the trades header */
+.fchip {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .8px;
+  color: var(--amber); background: rgba(255,191,0,.07);
+  border: 1px solid rgba(255,191,0,.45); border-radius: 2px;
+  padding: 2px 7px; cursor: pointer;
+}
+.fchip:hover { background: rgba(255,191,0,.14); }
 
 /* ─────────────────────────────────────────────── hunt clock ── */
 .hclock {
@@ -764,6 +805,8 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
       <h2>trades · last 20
         <span style="display:inline-flex;align-items:center;gap:8px;">
           <span class="hval dim" id="tcount">awaiting</span>
+          <button class="fchip" id="fchip" type="button" hidden
+                  title="clear the heat-grid hour filter (esc)">✕ filter</button>
           <button class="btn-xs" id="exportBtn" type="button"
                   title="download these rows as CSV" disabled>export</button>
         </span>
@@ -849,6 +892,9 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
       <div class="mxregimes" id="mxRegimes"></div>
       <div class="mxlab mxlab2">by session · net / fills / win rate</div>
       <div class="mxregimes mxsess" id="mxSessions" role="img" aria-label="net pnl per trading session"></div>
+      <div class="mxregimes mxsess" id="mxHuntLine" role="img" aria-label="hunt window contribution to net pnl"></div>
+      <div class="mxlab mxlab2">pnl heat · weekday × hour utc<span class="hlegend" id="mxHeatLegend"></span></div>
+      <div class="heatwrap" id="mxHeatGrid" role="img" aria-label="net pnl heatmap, weekday by hour — click a filled cell to filter the journal to that hour"></div>
       <div class="mxlab mxlab2">regime sequence · oldest → newest</div>
       <div class="regstrip" id="mxRegStrip" role="img" aria-label="regime of each fill, in chronological order"></div>
     </section>
@@ -867,7 +913,7 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
   <!-- ── footer ── -->
   <footer id="footer">
     <span>paper-first · losses published not hidden · not investment advice</span>
-    <span class="khint" title="keyboard: s/p standby · j/k journal · o open · c copy json · e export · l log · d demo · ? help" aria-hidden="true"><kbd>s</kbd><kbd>p</kbd><kbd>j</kbd><kbd>k</kbd><kbd>o</kbd><kbd>c</kbd><kbd>e</kbd><kbd>l</kbd><kbd>d</kbd><kbd>?</kbd></span>
+    <span class="khint" title="keyboard: s/p standby · j/k journal · o open · c copy json · e export · l log · d demo · esc clears heat filter · ? help" aria-hidden="true"><kbd>s</kbd><kbd>p</kbd><kbd>j</kbd><kbd>k</kbd><kbd>o</kbd><kbd>c</kbd><kbd>e</kbd><kbd>l</kbd><kbd>d</kbd><kbd>?</kbd></span>
     <span id="verChip" title="console version — pyproject is the single source of truth">console <b>—</b></span>
     <a class="github" href="https://github.com/muhammadwhizz-web/gold-reaper" target="_blank" rel="noopener">muhammadwhizz-web/gold-reaper</a>
   </footer>
@@ -895,6 +941,7 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
   <div class="khpanel">
     <div class="kht">console shortcuts</div>
     <div class="khr"><span class="kkeys"><kbd>s</kbd><kbd>/</kbd><kbd>p</kbd></span><span class="kdesc">standby — pause new entries (live: server kill-switch)</span></div>
+    <div class="khr"><span class="kkeys"><kbd>esc</kbd></span><span class="kdesc">close drawer / help · clears the heat-grid hour filter</span></div>
     <div class="khr"><span class="kkeys"><kbd>j</kbd><kbd>/</kbd><kbd>k</kbd></span><span class="kdesc">walk the journal row by row (amber marker)</span></div>
     <div class="khr"><span class="kkeys"><kbd>o</kbd></span><span class="kdesc">open the marked row's detail drawer</span></div>
     <div class="khr"><span class="kkeys"><kbd>e</kbd></span><span class="kdesc">export the journal as csv</span></div>
@@ -1324,15 +1371,16 @@ function sortTrades() {
 }
 function renderTrades(mode) {
   sortTrades();
+  const V = viewTrades(); // v3.2: the hour filter narrows everything the journal drives
   const tb = $("tbody");
-  if (!TRADES.length) {
+  if (!V.length) {
     tb.innerHTML = '<tr><td colspan="8"><div class="empty">' +
       '<span class="led led-standby"></span>' +
       (mode === "live"
         ? "no fills yet — journal open, first hunt pending"
         : "no trades yet") + '</div></td></tr>';
   } else {
-    tb.innerHTML = TRADES.map((t, idx) => {
+    tb.innerHTML = V.map((t, idx) => {
       const n = parseNum(t.pnl);
       const pc = n === null ? "zero" : n > 0 ? "pos" : n < 0 ? "neg" : "zero";
       const sc = String(t.side).toUpperCase() === "LONG" ? "s-long" : "s-short";
@@ -1350,8 +1398,12 @@ function renderTrades(mode) {
       </tr>`;
     }).join("");
   }
-  $("tcount").textContent = TRADES.length + " rows";
-  $("exportBtn").disabled = !TRADES.length;
+  $("tcount").textContent = V.length + " rows";
+  $("exportBtn").disabled = !V.length;
+  const fc = $("fchip");
+  if (fc) fc.hidden = !heatFilter;
+  if (fc && heatFilter) fc.textContent = "✕ " + WDAYS[heatFilter.w] + " " +
+    String(heatFilter.h).padStart(2, "0") + ":00";
   document.querySelectorAll("#ttable thead th").forEach(th => {
     const active = th.dataset.k === sortState.key;
     th.setAttribute("aria-sort", active ? (sortState.dir === 1 ? "ascending" : "descending") : "none");
@@ -1360,19 +1412,21 @@ function renderTrades(mode) {
   // keep the drawer's selection highlight aligned after sort/re-render
   if (typeof drawerIdx === "number" && drawerIdx >= 0) {
     const tr = $("tbody").children[drawerIdx];
-    if (tr && TRADES[drawerIdx]) tr.classList.add("sel");
+    if (tr && V[drawerIdx]) tr.classList.add("sel");
     else closeDrawer();
   }
   applyKnav();
   renderRegStrip();
   renderSessions();
+  renderHunt();     // v3.2: hunt-window attribution follows the same view
+  renderHeatGrid(); // v3.2: heat grid follows the same view
 }
 
 /* ── by-session rollup — which window actually pays (v3.1) ── */
 function renderSessions() {
   const box = $("mxSessions"); if (!box) return;
   const agg = {};
-  TRADES.forEach(t => {
+  viewTrades().forEach(t => {
     const k = String(t.session || "—").trim().toUpperCase() || "—";
     const pnl = parseFloat(String(t.pnl).replace(/[^0-9.\-]/g, "")) || 0;
     const a = agg[k] || (agg[k] = { n: 0, net: 0, w: 0 });
@@ -1395,6 +1449,118 @@ function renderSessions() {
       '<i class="swr">wr ' + wr + "%</i></span>";
   }).join("");
 }
+
+/* ── v3.2 · hunt-window attribution — does the 12-16 utc band still pay? ──
+   Client-derived from the same journal rows; no server contract change. */
+function renderHunt() {
+  const box = $("mxHuntLine"); if (!box) return;
+  const V = viewTrades();
+  if (!V.length) {
+    box.innerHTML = '<span class="dim">hunt attribution arrives with the first fills</span>';
+    return;
+  }
+  let n = 0, net = 0, tot = 0;
+  V.forEach(t => {
+    const pnl = parseNum(t.pnl) ?? 0;
+    tot += pnl;
+    const p = tsParts(t.ts);
+    if (p && p.h >= 12 && p.h < 16) { n += 1; net += pnl; }
+  });
+  const cls = net > 0 ? "g" : net < 0 ? "r" : "dim";
+  const share = tot !== 0 ? Math.round(net / tot * 100) : null;
+  const wpx = Math.max(2, Math.min(64, Math.round(Math.abs(net) / Math.max(1e-9, Math.abs(tot)) * 64)));
+  box.innerHTML = '<span class="srow" title="fills entered inside the 12-16 utc hunt window · share of realized net">' +
+    '<i class="sbar ' + (net >= 0 ? "sb-g" : "sb-r") + '" style="width:' + wpx + 'px"></i>' +
+    'hunt 12-16 utc <b>' + n + 't</b> <b class="' + cls + '">' + signed(net) + '$</b>' +
+    (share === null ? "" : '<i class="swr">' + share + "% of net</i>") + '</span>';
+}
+
+/* ── v3.2 · pnl heat grid — weekday × hour, one honest cell per bucket ──
+   Intensity = |net| relative to the busiest bucket. Click a filled cell →
+   the journal, rollups and this grid all narrow to that hour. esc lifts it. */
+const WDAYS = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+let heatFilter = null; // { w, h } or null
+function tsParts(ts) {
+  const m = /(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(ts || ""));
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+  return isNaN(d) ? null : { w: d.getUTCDay(), h: d.getUTCHours() };
+}
+function viewTrades() {
+  if (!heatFilter) return TRADES;
+  return TRADES.filter(t => {
+    const p = tsParts(t.ts);
+    return !!p && p.w === heatFilter.w && p.h === heatFilter.h;
+  });
+}
+function clearHeatFilter() {
+  if (!heatFilter) return;
+  heatFilter = null;
+  renderTrades(tradesMode);
+  showToast("hour filter cleared", "info");
+}
+function renderHeatGrid() {
+  const box = $("mxHeatGrid"), leg = $("mxHeatLegend");
+  if (!box) return;
+  const V = viewTrades();
+  const agg = Array.from({ length: 7 }, () => Array(24).fill(null));
+  V.forEach(t => {
+    const p = tsParts(t.ts), pnl = parseNum(t.pnl);
+    if (!p || pnl === null) return;
+    const c = agg[p.w][p.h] || (agg[p.w][p.h] = { net: 0, n: 0 });
+    c.net += pnl; c.n += 1;
+  });
+  const flat = [];
+  agg.forEach((row, w) => row.forEach((c, h) => { if (c) flat.push({ w, h, net: c.net, n: c.n }); }));
+  if (!flat.length) {
+    box.innerHTML = '<span class="dim hempty">no hourly attribution yet — heat arrives with the first fills</span>';
+    if (leg) leg.innerHTML = "";
+    return;
+  }
+  const maxAbs = Math.max(1e-9, ...flat.map(c => Math.abs(c.net)));
+  const best = flat.reduce((a, b) => (b.net > a.net ? b : a), flat[0]);
+  const worst = flat.reduce((a, b) => (b.net < a.net ? b : a), flat[0]);
+  let html = '<div class="hgrid">';
+  for (let w = 0; w < 7; w++) {
+    html += '<i class="hwl">' + WDAYS[w] + '</i>';
+    for (let h = 0; h < 24; h++) {
+      const c = agg[w][h];
+      const hunt = h >= 12 && h < 16 ? " hunt" : "";
+      const on = heatFilter && heatFilter.w === w && heatFilter.h === h ? " on" : "";
+      if (!c) {
+        html += '<i class="hgc' + hunt + on + '" data-w="' + w + '" data-h="' + h + '"></i>';
+        continue;
+      }
+      const a = Math.max(0.16, Math.min(1, Math.abs(c.net) / maxAbs));
+      const col = c.net > 0 ? "rgba(0,255,156," + a.toFixed(2) + ")"
+                            : "rgba(255,85,85," + a.toFixed(2) + ")";
+      html += '<i class="hgc' + hunt + on + '" data-w="' + w + '" data-h="' + h +
+        '" data-n="1" style="background:' + col +
+        '" title="' + WDAYS[w] + " " + String(h).padStart(2, "0") + ":00-" +
+        String((h + 1) % 24).padStart(2, "0") + ":00 utc · " + c.n +
+        " fill" + (c.n > 1 ? "s" : "") + " · net " + signed(c.net) + '$"></i>';
+    }
+  }
+  html += '</div><div class="haxis" aria-hidden="true">';
+  html += '<i></i>';
+  for (let h = 0; h < 24; h++)
+    html += '<i>' + (h % 3 === 0 ? String(h).padStart(2, "0") : "") + '</i>';
+  html += '</div>';
+  box.innerHTML = html;
+  if (leg) leg.innerHTML =
+    '<i class="hl g">best ' + WDAYS[best.w] + " " + String(best.h).padStart(2, "0") + ":00 " + signed(best.net) + '$</i>' +
+    '<i class="hl r">worst ' + WDAYS[worst.w] + " " + String(worst.h).padStart(2, "0") + ":00 " + signed(worst.net) + '$</i>';
+}
+$("mxHeatGrid").addEventListener("click", e => {
+  const c = e.target.closest(".hgc");
+  if (!c || !c.dataset.n) return; // empty cells don't filter — nothing to show
+  const w = +c.dataset.w, h = +c.dataset.h;
+  heatFilter = (heatFilter && heatFilter.w === w && heatFilter.h === h) ? null : { w, h };
+  renderTrades(tradesMode);
+  if (heatFilter) showToast("journal filtered · " + WDAYS[w] + " " +
+    String(h).padStart(2, "0") + ":00 utc · esc to clear", "info");
+});
+$("fchip").addEventListener("click", clearHeatFilter);
 
 /* ── session tag chip — the hunt window gets the brand color (v3.1) ── */
 function sessTag(s) {
@@ -1419,28 +1585,29 @@ document.querySelector("#ttable thead").addEventListener("click", e => {
 
 /* ── CSV export (client-side, from the loaded rows) ── */
 function exportJournal() {
-  if (!TRADES.length) return;
-  const keys = [...new Set(TRADES.flatMap(t => Object.keys(t)))];
+  const V = viewTrades(); // v3.2: export carries the active hour filter — you get what you see
+  if (!V.length) return;
+  const keys = [...new Set(V.flatMap(t => Object.keys(t)))];
   const cell = v => {
     const s = v === null || v === undefined ? "" : String(v);
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
   const csv = [keys.join(",")]
-    .concat(TRADES.map(t => keys.map(k => cell(t[k])).join(",")))
+    .concat(V.map(t => keys.map(k => cell(t[k])).join(",")))
     .join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   a.download = "gold-reaper-trades.csv";
   a.click();
   URL.revokeObjectURL(a.href);
-  showToast("journal exported · " + TRADES.length + " rows");
+  showToast("journal exported · " + V.length + " rows" + (heatFilter ? " · filtered" : ""));
 }
 $("exportBtn").addEventListener("click", exportJournal);
 
 /* ── trade detail drawer (click a row — same data, dignified layout) ── */
 let drawerIdx = -1;
 function openDrawer(i) {
-  const t = TRADES[i]; if (!t) return;
+  const t = viewTrades()[i]; if (!t) return;
   drawerIdx = i;
   knavIdx = i;   // j/k and the drawer share one cursor
   const side = String(t.side).toUpperCase();
@@ -1503,16 +1670,17 @@ function closeDrawer() {
   clearKnav();
 }
 $("tbody").addEventListener("click", e => {
-  const tr = e.target.closest("tr"); if (!tr || !TRADES.length) return;
+  const V = viewTrades();
+  const tr = e.target.closest("tr"); if (!tr || !V.length) return;
   const i = [...tr.parentNode.children].indexOf(tr);
-  if (i >= 0 && TRADES[i]) openDrawer(i);
+  if (i >= 0 && V[i]) openDrawer(i);
 });
 $("dClose").addEventListener("click", closeDrawer);
 $("backdrop").addEventListener("click", closeDrawer);
 
 /* ── copy the drawer's row as JSON (v3.0 · dCopy button or the c key) ── */
 async function copyTradeJson() {
-  const t = TRADES[drawerIdx];
+  const t = viewTrades()[drawerIdx];
   if (!t) return;
   try {
     await navigator.clipboard.writeText(JSON.stringify(t, null, 2));
@@ -1924,6 +2092,7 @@ window.addEventListener("keydown", e => {
   if (k === "escape") {
     closeDrawer();
     $("kbdHelp").classList.remove("on");
+    if (heatFilter) clearHeatFilter(); // v3.2: esc also lifts the hour filter
     return;
   }
   if (k === "?") { $("kbdHelp").classList.toggle("on"); return; }
@@ -1952,8 +2121,14 @@ async function fetchStandby() {
 }
 
 /* ── toast feedback · one node per message, auto-dismiss, aria-live ── */
+let lastToast = { msg: "", at: 0 };
 function showToast(msg, kind) {
   const box = $("toasts"); if (!box) return;
+  // v3.2 dedup: identical text inside 4s is dropped — a flapping sse socket
+  // must not strobe the operator; real state changes always announce
+  const now = Date.now();
+  if (msg && msg === lastToast.msg && now - lastToast.at < 4000) return;
+  lastToast = { msg: String(msg || ""), at: now };
   const t = document.createElement("div");
   t.className = "toast " + (kind || "ok");
   t.innerHTML = '<span class="tled"></span>' + esc(msg);
@@ -1983,7 +2158,7 @@ function applyKnav() {
 }
 function clearKnav() { if (knavIdx < 0) return; knavIdx = -1; applyKnav(); }
 function knavMove(d) {
-  const n = TRADES.length; if (!n) return;
+  const n = viewTrades().length; if (!n) return;
   knavIdx = knavIdx < 0 ? (d > 0 ? 0 : n - 1)
                         : Math.max(0, Math.min(n - 1, knavIdx + d));
   applyKnav();
@@ -1993,7 +2168,7 @@ function knavMove(d) {
 /* ── regime sequence strip — one segment per fill, chronological ── */
 function renderRegStrip() {
   const box = $("mxRegStrip"); if (!box) return;
-  const rows = TRADES.filter(t => t && t.regime)
+  const rows = viewTrades().filter(t => t && t.regime)
     .slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
   if (!rows.length) {
     box.innerHTML = '<div class="regstripempty">no fills yet — segments appear with the first close</div>';
