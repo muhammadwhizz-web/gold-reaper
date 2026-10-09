@@ -234,12 +234,23 @@ jobs:
           assert n1["events"][0]["min_until"] > 0
           print("news radar OK | parsed", len(n1["events"]), "event(s)")
           da.DATA = real_data
+          # v2.7 contracts: console version field + SSE named state event
+          assert da.CONSOLE_VERSION.startswith("v")
+          s6 = da.state_payload()
+          assert s6["version"] == da.CONSOLE_VERSION
+          ev = da._state_event()
+          assert ev["event"] == "state" and json.loads(ev["data"])["version"]
+          print("v2.7 OK | console version + SSE state event contract")
           # static console carries the new contract markers
           html = open("dashboard/static/index.html", encoding="utf-8").read()
           for marker in ('id="ledgerHeat"', 'function renderHeat',
-                         'id="tfill"', 'bechip trail', 'document.title'):
+                         'id="tfill"', 'bechip trail', 'document.title',
+                         'addEventListener("state"', 'function drawFav',
+                         'function openDrawer', 'id="kbdHelp"',
+                         'id="verChip"', 'stateLoop'):
               assert marker in html, f"missing marker: {marker}"
-          print("static console markers OK | heat strip + trail chip + title")
+          print("static console markers OK | heat strip + trail chip + title"
+                " + sse-push + favicon LED + drawer + help + version chip")
           PY
 
       - name: Reaper is alive

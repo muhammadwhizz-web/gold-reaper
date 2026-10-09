@@ -34,6 +34,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -43,7 +44,8 @@ WATCHLOG = ROOT / "data" / "watchdog.log"
 
 if os.name == "nt":
     try:
-        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        _out: Any = sys.stdout
+        _out.reconfigure(encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
 

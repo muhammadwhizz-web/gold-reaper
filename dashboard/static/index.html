@@ -123,9 +123,12 @@ body.demo .chip, body.demo #rainToggle { display: none; }
 }
 .panel::before, .panel::after {
   content: ""; position: absolute; width: 9px; height: 9px; pointer-events: none;
+  border-color: rgba(0,255,156,0.34); border-style: solid; border-width: 0;
+  transition: border-color 0.18s ease;
 }
-.panel::before { top: -1px; left: -1px; border-top: 1px solid var(--green); border-left: 1px solid var(--green); }
-.panel::after  { bottom: -1px; right: -1px; border-bottom: 1px solid var(--green); border-right: 1px solid var(--green); }
+.panel::before { top: -1px; left: -1px; border-top-width: 1px; border-left-width: 1px; }
+.panel::after  { bottom: -1px; right: -1px; border-bottom-width: 1px; border-right-width: 1px; }
+.panel:hover::before, .panel:hover::after { border-color: var(--green); }
 .panel > h2 {
   margin: 0 0 10px; font-size: 10px; font-weight: 400; letter-spacing: 2.5px;
   text-transform: uppercase; color: var(--dim);
@@ -303,6 +306,83 @@ kbd {
   border: 1px solid var(--line); padding: 1px 6px;
 }
 body.demo #footer { display: none; }
+#verChip {
+  border: 1px solid var(--line); padding: 1px 8px; font-size: 10px;
+  color: var(--dim); letter-spacing: 1px;
+}
+#verChip b { color: var(--green); font-weight: 600; }
+
+/* ───────────────────────────────────── trade detail drawer ── */
+#backdrop {
+  display: none; position: fixed; inset: 0; z-index: 70;
+  background: rgba(4,7,7,0.62); backdrop-filter: blur(1.5px);
+}
+#backdrop.on { display: block; }
+#drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 80;
+  width: 390px; max-width: 94vw;
+  background: var(--panel); border-left: 1px solid var(--line);
+  transform: translateX(102%); transition: transform 0.22s cubic-bezier(0.22,1,0.36,1);
+  display: flex; flex-direction: column;
+  box-shadow: -18px 0 44px rgba(0,0,0,0.45);
+}
+#drawer.open { transform: translateX(0); }
+#drawer .dhead {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--line);
+  font-size: 10.5px; letter-spacing: 2.4px; text-transform: uppercase; color: var(--dim);
+}
+#drawer .dhead .dside { font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+#drawer .dhead .dside.s-long { color: var(--green); }
+#drawer .dhead .dside.s-short { color: var(--red); }
+#drawer .dclose {
+  margin-left: auto; background: none; border: 1px solid var(--line);
+  color: var(--dim); font-family: var(--mono); font-size: 12px;
+  width: 30px; height: 30px; cursor: pointer; transition: color 0.15s, border-color 0.15s;
+}
+#drawer .dclose:hover { color: var(--green); border-color: var(--green); }
+#drawer .dbody { padding: 16px 18px 22px; overflow-y: auto; }
+.dgrid {
+  display: grid; grid-template-columns: 1fr auto; gap: 9px 14px;
+  font-size: 12.5px;
+}
+.dgrid .dk { color: var(--dim); font-size: 10.5px; letter-spacing: 1.6px;
+  text-transform: uppercase; align-self: center; }
+.dgrid .dv { text-align: right; font-variant-numeric: tabular-nums; }
+.dgrid .dv.g { color: var(--green); }
+.dgrid .dv.r { color: var(--red); }
+.dgrid .dv.sep { border-top: 1px solid var(--line); padding-top: 9px; margin-top: 3px; }
+.dfoot {
+  margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line);
+  font-size: 10px; color: var(--dim); letter-spacing: 1px; line-height: 1.7;
+}
+#tbody tr.rowlink { cursor: pointer; }
+#tbody tr.rowlink:hover td { background: var(--hover); }
+#tbody tr.sel td { background: #10201B; }
+#tbody tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--green); }
+
+/* ───────────────────────────────────── keyboard help overlay ── */
+#kbdHelp {
+  display: none; position: fixed; inset: 0; z-index: 85;
+  background: rgba(4,7,7,0.78); backdrop-filter: blur(2px);
+  align-items: center; justify-content: center;
+}
+#kbdHelp.on { display: flex; }
+#kbdHelp .khpanel {
+  border: 1px solid var(--line); background: var(--panel);
+  padding: 22px 30px 24px; min-width: 320px;
+}
+#kbdHelp .kht {
+  color: var(--green); font-size: 12px; letter-spacing: 3px;
+  text-transform: uppercase; margin-bottom: 14px;
+}
+#kbdHelp .khr {
+  display: flex; align-items: center; gap: 12px; padding: 5px 0;
+  font-size: 11.5px; color: var(--text);
+}
+#kbdHelp .khr .kkeys { display: inline-flex; gap: 4px; min-width: 96px; }
+#kbdHelp .khr .kdesc { color: var(--dim); }
+#kbdHelp .khfoot { margin-top: 14px; font-size: 10px; color: var(--dim); letter-spacing: 1px; }
 
 /* ─────────────────────────────────────────────── standby overlay ── */
 #standby {
@@ -657,10 +737,38 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
   <!-- ── footer ── -->
   <footer id="footer">
     <span>paper-first · losses published not hidden · not investment advice</span>
-    <span class="khint" title="keyboard: s/p standby · l log · d demo" aria-hidden="true"><kbd>s</kbd><kbd>p</kbd><kbd>l</kbd><kbd>d</kbd></span>
+    <span class="khint" title="keyboard: s/p standby · l log · d demo · ? this help" aria-hidden="true"><kbd>s</kbd><kbd>p</kbd><kbd>l</kbd><kbd>d</kbd><kbd>?</kbd></span>
+    <span id="verChip" title="console version — pyproject is the single source of truth">console <b>—</b></span>
     <a class="github" href="https://github.com/muhammadwhizz-web/gold-reaper" target="_blank" rel="noopener">muhammadwhizz-web/gold-reaper</a>
   </footer>
 
+</div>
+
+<!-- ── trade detail drawer ── -->
+<div id="backdrop"></div>
+<aside id="drawer" role="dialog" aria-modal="false" aria-label="trade detail">
+  <div class="dhead">
+    <span>trade detail</span>
+    <span class="dside" id="dSide">—</span>
+    <button class="dclose" id="dClose" aria-label="close trade detail">✕</button>
+  </div>
+  <div class="dbody">
+    <div class="dgrid" id="dGrid"></div>
+    <div class="dfoot" id="dFoot">journal row · append-only</div>
+  </div>
+</aside>
+
+<!-- ── keyboard help overlay ── -->
+<div id="kbdHelp" role="dialog" aria-label="keyboard shortcuts">
+  <div class="khpanel">
+    <div class="kht">console shortcuts</div>
+    <div class="khr"><span class="kkeys"><kbd>s</kbd><kbd>/</kbd><kbd>p</kbd></span><span class="kdesc">standby — pause new entries (live: server kill-switch)</span></div>
+    <div class="khr"><span class="kkeys"><kbd>l</kbd></span><span class="kdesc">toggle the SSE log panel</span></div>
+    <div class="khr"><span class="kkeys"><kbd>d</kbd></span><span class="kdesc">demo mode — hides ops chrome, shows the demo badge</span></div>
+    <div class="khr"><span class="kkeys"><kbd>esc</kbd></span><span class="kdesc">close drawer / overlay</span></div>
+    <div class="khr"><span class="kkeys"><kbd>click</kbd></span><span class="kdesc">a trades row opens its detail drawer</span></div>
+    <div class="khfoot">tab title mirrors the hunt clock · favicon LED mirrors standby/offline state</div>
+  </div>
 </div>
 
 <!-- ── standby overlay ── -->
@@ -714,8 +822,42 @@ function tickTo(el, to, fmt) {
   el._raf = requestAnimationFrame(step);
 }
 
-/* ── offline LED ── */
-const setOffline = on => $("offline").classList.toggle("on", on);
+/* ── offline LED + favicon LED (browser-tab status mirror) ── */
+const favBits = { offline: false, standby: false, hunt: false }; // priority: offline > standby > hunt
+let favState = "", favPulseTimer = null;
+const FAV_LINK = document.querySelector('link[rel="icon"]');
+function drawFav(bright) {
+  try {
+    const c = document.createElement("canvas"); c.width = c.height = 64;
+    const x = c.getContext("2d"); if (!x) return null;
+    x.fillStyle = "#0A0E0F"; x.fillRect(0, 0, 64, 64);
+    x.strokeStyle = "#1A2422"; x.lineWidth = 4; x.strokeRect(2, 2, 60, 60);
+    const col = favState === "offline" ? "#FF5555"
+              : favState === "standby" ? "#FFBF00" : "#00FF9C";
+    x.globalAlpha = bright ? 1 : 0.35;
+    x.fillStyle = col;
+    x.beginPath(); x.arc(32, 32, favState === "idle" ? 9 : 14, 0, Math.PI * 2); x.fill();
+    x.globalAlpha = 1;
+    return c.toDataURL("image/png");
+  } catch (_) { return null; }
+}
+function refreshFavLED() {
+  favState = favBits.offline ? "offline" : favBits.standby ? "standby"
+           : favBits.hunt ? "hunt" : "idle";
+  if (!FAV_LINK || RM) return; // reduced motion: keep the shipped icon
+  const bright = drawFav(true), dim = drawFav(false);
+  if (!bright || !dim) return;
+  if (favPulseTimer) { clearInterval(favPulseTimer); favPulseTimer = null; }
+  if (favState === "hunt" || favState === "offline") {
+    let b = true;
+    FAV_LINK.href = bright;
+    favPulseTimer = setInterval(() => { FAV_LINK.href = (b = !b) ? dim : bright; }, 850);
+  } else FAV_LINK.href = bright;
+}
+const setOffline = on => {
+  $("offline").classList.toggle("on", on);
+  favBits.offline = !!on; refreshFavLED();
+};
 
 /* ── UTC clock ── */
 function tickClock() { $("clock").textContent = new Date().toISOString().slice(11, 19) + " UTC"; }
@@ -750,6 +892,7 @@ function huntTick() {
     fill.style.width = clamp((h - HUNT.start) * 3600 / span * 100, 0, 100).toFixed(1) + "%";
     chip.hidden = false; chip.innerHTML = "window <b>" + fmtHMS(left) + "</b>";
     document.title = "hunt open · " + fmtHMS(left) + " · GOLD//REAPER";
+    if (!favBits.hunt) { favBits.hunt = true; refreshFavLED(); }
   } else {
     const next = new Date(now);
     next.setUTCHours(HUNT.start, 0, 0, 0);
@@ -767,6 +910,7 @@ function huntTick() {
         f(new Date(next.getTime() + k * 864e5)) + " " + pad2(HUNT.start) + ":00</span>").join(" · ");
   }
   if (document.body.classList.contains("standby")) document.title = "STANDBY · GOLD//REAPER";
+  if (favBits.hunt !== open) { favBits.hunt = open; refreshFavLED(); }
 }
 
 /* ─────────────────────────────────────────────── matrix rain ── */
@@ -997,6 +1141,7 @@ function renderPosition(p) {
 const NUMERIC_COLS = new Set(["size_oz", "entry", "pnl", "r"]);
 let TRADES = [];
 let tradesMode = "mock"; // remembered so sorting keeps the honest empty message
+let statePush = false;   // a named SSE `state` event has been observed
 const sortState = { key: "ts", dir: -1 }; // newest first by default
 
 function sortTrades() {
@@ -1028,7 +1173,7 @@ function renderTrades(mode) {
       const sc = String(t.side).toUpperCase() === "LONG" ? "s-long" : "s-short";
       const rn = parseNum(t.r);
       const rc = rn === null ? "zero" : rn > 0 ? "pos" : rn < 0 ? "neg" : "zero";
-      return `<tr>
+      return `<tr class="rowlink" title="open detail">
         <td class="dim">${esc(t.ts)}</td>
         <td class="${sc}">${esc(t.side)}</td>
         <td class="num">${esc(t.size_oz)}</td>
@@ -1047,6 +1192,12 @@ function renderTrades(mode) {
     th.setAttribute("aria-sort", active ? (sortState.dir === 1 ? "ascending" : "descending") : "none");
     th.querySelector(".caret").textContent = active ? (sortState.dir === 1 ? "▲" : "▼") : "";
   });
+  // keep the drawer's selection highlight aligned after sort/re-render
+  if (typeof drawerIdx === "number" && drawerIdx >= 0) {
+    const tr = $("tbody").children[drawerIdx];
+    if (tr && TRADES[drawerIdx]) tr.classList.add("sel");
+    else closeDrawer();
+  }
 }
 document.querySelector("#ttable thead").addEventListener("click", e => {
   const th = e.target.closest("th"); if (!th) return;
@@ -1074,6 +1225,53 @@ $("exportBtn").addEventListener("click", () => {
   URL.revokeObjectURL(a.href);
 });
 
+/* ── trade detail drawer (click a row — same data, dignified layout) ── */
+let drawerIdx = -1;
+function openDrawer(i) {
+  const t = TRADES[i]; if (!t) return;
+  drawerIdx = i;
+  const side = String(t.side).toUpperCase();
+  const dSide = $("dSide");
+  dSide.textContent = side;
+  dSide.className = "dside " + (side === "LONG" ? "s-long" : "s-short");
+  const pnl = parseNum(t.pnl), r = parseNum(t.r);
+  const sgn = v => v === null ? "" : v > 0 ? " g" : v < 0 ? " r" : "";
+  const rows = [
+    ["time", t.ts ?? "—", ""],
+    ["side", side, side === "LONG" ? "g" : "r"],
+    ["size", (t.size_oz ?? "—") + " oz", ""],
+    ["entry", t.entry ?? "—", ""],
+    ["realized pnl", t.pnl ?? "—", sgn(pnl).trim()],
+    ["r multiple", t.r ?? "—", sgn(r).trim()],
+    ["regime", t.regime ?? "—", ""],
+    ["session", t.session ?? "—", ""],
+  ];
+  $("dGrid").innerHTML = rows.map((x, j) =>
+    '<span class="dk">' + esc(x[0]) + '</span><span class="dv' +
+    (x[2] ? " " + x[2] : "") + (j === 4 ? " sep" : "") + '">' + esc(x[1]) + "</span>"
+  ).join("");
+  $("dFoot").textContent = tradesMode === "live"
+    ? "live journal row · entry paired with its fill · append-only"
+    : "journal row · append-only";
+  $("drawer").classList.add("open");
+  $("backdrop").classList.add("on");
+  document.querySelectorAll("#tbody tr").forEach((tr, j) =>
+    tr.classList.toggle("sel", j === i));
+}
+function closeDrawer() {
+  drawerIdx = -1;
+  $("drawer").classList.remove("open");
+  $("backdrop").classList.remove("on");
+  document.querySelectorAll("#tbody tr.sel").forEach(tr => tr.classList.remove("sel"));
+}
+$("tbody").addEventListener("click", e => {
+  const tr = e.target.closest("tr"); if (!tr || !TRADES.length) return;
+  const i = [...tr.parentNode.children].indexOf(tr);
+  if (i >= 0 && TRADES[i]) openDrawer(i);
+});
+$("dClose").addEventListener("click", closeDrawer);
+$("backdrop").addEventListener("click", closeDrawer);
+
 /* ─────────────────────────────────────────────── log tail ── */
 function addLog(t, line) {
   const box = $("log");
@@ -1097,6 +1295,16 @@ function addLog(t, line) {
 if (!window.MOCK_DATA) {  // static Pages build has no SSE endpoint — skip
   const es = new EventSource("/api/stream");
   es.onmessage = e => { try { const d = JSON.parse(e.data); addLog(d.t || "", d.line || ""); } catch (_) {} };
+  // named `state` events: the server pushes the full state payload (~6s)
+  // — the poll then widens to a 15s fallback instead of the 5s primary
+  es.addEventListener("state", e => {
+    try {
+      renderState(JSON.parse(e.data));
+      setOffline(false);
+      statePush = true;
+    } catch (_) {}
+  });
+  es.onerror = () => { statePush = false; }; // poll narrows back to 5s
 }
 
 /* ─────────────────────────────── analytics (PF · DD · histogram) ── */
@@ -1235,6 +1443,7 @@ async function fetchLedger() {
 let rainResolved = false;
 function renderState(s) {
   // top bar: mode badge + mock hint + chips
+  if (s.version) $("verChip").innerHTML = "console <b>" + esc(s.version) + "</b>";
   const badge = $("modeBadge");
   badge.textContent = String(s.mode || "?").toUpperCase();
   badge.classList.toggle("live", s.mode === "live");
@@ -1367,11 +1576,14 @@ function applyStandby(on) {
   $("sbSub").textContent = serverStandby
     ? "kill-switch engaged · new entries paused on the bot"
     : "press s to resume";
+  const st = serverStandby || localStandby;
+  if (favBits.standby !== st) { favBits.standby = st; refreshFavLED(); }
 }
 function toggleStandby() {  // local preview; the server kill-switch wins
   if (serverStandby) return;
   localStandby = !localStandby;
   document.body.classList.toggle("standby", localStandby);
+  if (favBits.standby !== localStandby) { favBits.standby = localStandby; refreshFavLED(); }
 }
 function toggleLog() { const p = $("log-panel"); p.hidden = !p.hidden; }
 function toggleDemo() { document.body.classList.toggle("demo"); }
@@ -1379,6 +1591,12 @@ window.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (/^(input|textarea|select)$/i.test(e.target.tagName || "")) return;
   const k = e.key.toLowerCase();
+  if (k === "escape") {
+    closeDrawer();
+    $("kbdHelp").classList.remove("on");
+    return;
+  }
+  if (k === "?") { $("kbdHelp").classList.toggle("on"); return; }
   if (k === "s" || k === "p") toggleStandby(); // p is an alias of s
   else if (k === "l") toggleLog();
   else if (k === "d") toggleDemo();
@@ -1486,7 +1704,9 @@ if (window.MOCK_DATA) {
 } else {
   fetchState();  fetchTrades();  fetchLedger();  fetchMetrics();
   fetchNews();  fetchStandby();
-  setInterval(fetchState, 5000);     // auto-refresh state every 5s
+  (function stateLoop() {   // SSE push is primary once seen; poll is the fallback
+    fetchState().finally(() => setTimeout(stateLoop, statePush ? 15000 : 5000));
+  })();
   setInterval(fetchTrades, 15000);   // auto-refresh trades every 15s
   setInterval(fetchMetrics, 30000);  // analytics refresh every 30s
   setInterval(fetchLedger, 60000);   // ledger appends once a day — 60s is plenty

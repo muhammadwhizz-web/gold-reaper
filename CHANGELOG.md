@@ -2,6 +2,41 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [2.7] — 2026-10-09 — SSE state push + favicon LED + trade detail drawer
+
+### Added
+- **SSE state push**: `/api/stream` now emits named `state` events (~6s)
+  carrying the full state payload. The console consumes them as the
+  primary state source and widens its poll to a 15s fallback once a
+  push is observed; on stream error the poll narrows back to 5s.
+  Named events leave the default `message` log-tail channel untouched.
+- **Favicon LED**: the browser-tab icon is drawn on a canvas and mirrors
+  console status — pulsing green while the hunt window is open, amber
+  under standby, red when offline, dim dot otherwise (reduced-motion
+  users keep the shipped static icon). Joins the existing tab-title
+  countdown as a background-tab status mirror.
+- **Trade detail drawer**: clicking a trades-table row slides in a
+  drawer with the row in a label/value grid (time, side, size, entry,
+  realized pnl, r-multiple, regime, session) with sign coloring, a
+  live-vs-journal footnote, and selection highlight that survives
+  re-sorts. Esc / backdrop / ✕ all close it.
+- **Keyboard help overlay** (`?`) listing every shortcut, plus a console
+  version chip in the footer sourced from `pyproject.toml` via the new
+  `state.version` field (single source of truth).
+
+### Changed
+- Panel HUD corner brackets now idle at 34% opacity and brighten to
+  full green on hover (they were permanently solid).
+- Hermetic CI check extended: console-version + SSE-state-event
+  contracts asserted server-side; static markers for the push
+  listener, favicon LED, drawer, help overlay, version chip.
+
+### Fixed
+- `mypy .` (full tree) now clean: 4 pre-existing errors outside the CI
+  scope in the Windows-only `watchdog.py` / `system_tray.py` (stdout
+  `reconfigure` narrowing, tray stop-callback signature, Event used
+  before assignment).
+
 ## [2.6] — 2026-10-09 — heartbeat position snapshot + ledger heat strip
 
 ### Added

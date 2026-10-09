@@ -28,13 +28,15 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 if os.name == "nt":
     try:
-        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        _out: Any = sys.stdout
+        _out.reconfigure(encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
 
@@ -97,6 +99,11 @@ def main() -> int:
     try:
         import pystray
 
+        icon_stop = threading.Event()
+
+        def _stop(*_: object) -> None:
+            _stop_bot()
+
         icon = pystray.Icon(
             "gold-reaper",
             icon=_led_icon(GREEN),
@@ -105,14 +112,11 @@ def main() -> int:
                 pystray.MenuItem("Open Dashboard",
                                  lambda *_: webbrowser.open(DASHBOARD_URL),
                                  default=True),
-                pystray.MenuItem("Stop Reaper",
-                                 lambda *_: (_stop_bot(), None)),
+                pystray.MenuItem("Stop Reaper", _stop),
                 pystray.MenuItem("Exit Tray",
                                  lambda *_: icon_stop.set()),
             ),
         )
-
-        icon_stop = threading.Event()
 
         def refresher() -> None:
             while not icon_stop.wait(10.0):

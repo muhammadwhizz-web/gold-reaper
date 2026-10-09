@@ -26,17 +26,25 @@ python dashboard/app.py          # http://localhost:8080
 
 Auto-detects a running bot: if `data/apex_risk.json` exists it renders live
 state; otherwise a seeded mock session. Includes SSE log tail (seeds recent
-audit history, then tails live), equity curve with running-peak drawdown
-shading, position card fed by the bot's heartbeat position snapshot (BE and
-TRAIL chips, age tooltip), trades table with R-multiple column and CSV export,
+audit history, then tails live), SSE state push (named `state` events every
+~6s are the primary state source; the poll widens to a 15s fallback once a
+push is seen and narrows back to 5s if the stream drops), equity curve with
+running-peak drawdown shading, position card fed by the bot's heartbeat
+position snapshot (BE and TRAIL chips, age tooltip), trades table with
+R-multiple column, CSV export and a click-through trade detail drawer,
 trade analytics (profit factor, win rate, expectancy, max drawdown, PnL
 distribution histogram, underwater curve, per-regime split), hunt-window
-clock with next-3-windows countdown (mirrored in the browser-tab title),
-24 h session map with a live UTC cursor, news radar with high-impact
-countdowns, a 14-day paper-ledger heat strip (bar height = |net|, color =
-sign), bot-liveness LED (from `data/heartbeat.json` — stale heartbeat shows
-an amber "bot stale" chip and honest awaiting states instead of fabricated
-regime/broker data), a real kill-switch, and a matrix rain canvas.
+clock with next-3-windows countdown (mirrored in the browser-tab title,
+with a canvas-drawn favicon LED: pulsing green while the window is open,
+amber under standby, red offline), 24 h session map with a live UTC cursor,
+news radar with high-impact countdowns, a 14-day paper-ledger heat strip
+(bar height = |net|, color = sign), bot-liveness LED (from
+`data/heartbeat.json` — stale heartbeat shows an amber "bot stale" chip and
+honest awaiting states instead of fabricated regime/broker data), a real
+kill-switch, a footer version chip (`state.version`, sourced from
+pyproject), and a matrix rain canvas. Keyboard: `s`/`p` standby · `l` log ·
+`d` demo · `?` shortcut help · `Esc` closes drawer/overlay · click a trades
+row for its detail drawer.
 
 The kill-switch is server-side: the top-bar **standby** button (or `POST
 /api/standby {"on": true}`) writes `data/standby.flag`; the running bot

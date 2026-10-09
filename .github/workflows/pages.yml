@@ -144,7 +144,8 @@ jobs:
                   {"name": "Bitget", "state": "standby", "latency_ms": None},
                   {"name": "Paper", "state": "up", "latency_ms": 1}],
               "streak": 1, "hunt_window": "12-14 UTC",
-              "geometry": "SL 1.2xATR \u00b7 TP 2.0R \u00b7 risk 1%"},
+              "geometry": "SL 1.2xATR \u00b7 TP 2.0R \u00b7 risk 1%",
+              "version": "v2.7.0"},
               "trades": trades, "track_record": track, "metrics": metrics}
           # news radar mock — informational countdowns (client renders them)
           mock_news = {"fetched_at": "2026-10-09T14:02:22+00:00", "events": [

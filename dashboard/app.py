@@ -46,6 +46,20 @@ STANDBY_FILE = DATA / "standby.flag"
 NEWS_FILE = DATA / "news" / "calendar_latest.json"
 HEARTBEAT_FRESH_S = 180  # mirrors watchdog staleness threshold
 
+
+def _console_version() -> str:
+    """Console version = the pyproject version (single source of truth)."""
+    try:
+        for line in (ROOT / "pyproject.toml").read_text(encoding="utf-8").splitlines():
+            if line.startswith("version"):
+                return "v" + line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:  # noqa: BLE001
+        pass
+    return "unknown"
+
+
+CONSOLE_VERSION = _console_version()
+
 app = FastAPI(title="GOLD//REAPER", docs_url=None, redoc_url=None)
 
 # vendored JS for the console UI (chart.umd.min.js) — no API contract change
@@ -302,6 +316,7 @@ def state_payload() -> dict:
                 "streak": max(0, risk.get("wins", 0) - risk.get("losses", 0)),
                 "hunt_window": "12-14 UTC",
                 "geometry": "SL 1.2xATR · TP 2.0R · risk 1%",
+                "version": CONSOLE_VERSION,
             }
         except Exception:  # noqa: BLE001
             pass
@@ -337,6 +352,7 @@ def state_payload() -> dict:
         "streak": 1,
         "hunt_window": "12-14 UTC",
         "geometry": "SL 1.2xATR · TP 2.0R · risk 1%",
+        "version": CONSOLE_VERSION,
     }
 
 
@@ -652,9 +668,20 @@ def api_standby_post(body: dict) -> JSONResponse:
     return JSONResponse({"on": set_standby(on)})
 
 
+def _state_event() -> dict:
+    """Named SSE event carrying the full state payload.
+
+    The console consumes these as the primary state source and keeps
+    its poll only as an offline fallback (poll widens 5s -> 15s once a
+    push has been seen). Named events leave the existing default
+    `message` log-tail channel untouched."""
+    return {"event": "state", "data": json.dumps(state_payload())}
+
+
 async def _stream():
     """SSE: seeds recent audit history, then tails new records live;
-    mock stream when no audit ledger exists."""
+    mock stream when no audit ledger exists. Both branches also push
+    the full state payload as named `state` events (~6s cadence)."""
     audit = DATA / "audit.jsonl"
     if audit.exists():
 
@@ -675,6 +702,7 @@ async def _stream():
         for ev in _events()[-14:]:
             yield {"data": json.dumps(ev)}
         pos = audit.read_text().count("\n")
+        beat = 0
         while True:
             lines = audit.read_text().splitlines()
             while pos < len(lines):
@@ -686,6 +714,9 @@ async def _stream():
                 except Exception:  # noqa: BLE001
                     pass
                 pos += 1
+            beat += 1
+            if beat % 3 == 0:  # ~every 6s: push state over SSE
+                yield _state_event()
             await asyncio.sleep(2.0)
     else:
         for line in log_lines_mock():
@@ -698,6 +729,8 @@ async def _stream():
             yield {"data": json.dumps({
                 "t": ts, "line": f"{ts} | mock heartbeat {beat} · "
                                  f"guard armed · waiting block window"})}
+            if beat % 3 == 0:  # ~every 9s: push state over SSE
+                yield _state_event()
             await asyncio.sleep(3.0)
 
 
