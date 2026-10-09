@@ -2,6 +2,37 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [2.8] — 2026-10-09 — toast feedback · j/k journal nav · regime sequence
+
+### Added
+- **Toast feedback layer**: console actions now acknowledge themselves —
+  kill-switch engage/release (amber/green), local preview pause, journal
+  CSV export with row count, and the boot attach notice
+  ("console attached · mock replay" / "· live telemetry"). Toasts stack
+  bottom-right, auto-dismiss at 3.2s, cap at four, and announce through
+  an `aria-live="polite"` region. Server-side kill-switch flips that
+  arrive via polling/SSE toast once — change detection lives inside
+  `applyStandby`, so every path (button, poll, state push) reports once.
+- **j/k journal navigation**: `j`/`k` walk the trades table row by row
+  with an amber cursor and row-number glyph, `o`/`Enter` opens the
+  highlighted row's detail drawer, and `j`/`k` keep navigating the
+  drawer live while it is open (one shared cursor with click-to-open).
+  `Esc` closes drawer and clears the cursor; `scrollIntoView` stays
+  `nearest` so walking never yanks the page.
+- **Regime sequence strip**: the analytics panel gains a chronological
+  one-segment-per-fill strip (green TREND_UP / red TREND_DOWN / olive
+  RANGE), newest segment outlined, each with a `date · regime · pnl`
+  tooltip. Honest zero-state when the journal is empty.
+- **Equity end-value chip**: a Chart.js plugin draws a glowing marker on
+  the last equity point plus a small price tag, so the curve's current
+  value reads without a hover.
+
+### Changed
+- Keyboard help overlay and footer hint now list `j` `k` `o`; README
+  dashboard row updated to match.
+- The trades-panel footer (`.tfill`) carries a faint 45° hatch so the
+  dead vertical space below a short journal reads as intentional.
+
 ## [2.7] — 2026-10-09 — SSE state push + favicon LED + trade detail drawer
 
 ### Added

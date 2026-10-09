@@ -230,6 +230,12 @@ body.demo #eqBody { height: 420px; }
 .tfill {
   font-size: 9.5px; color: var(--dim); opacity: 0.65;
   letter-spacing: 0.6px; text-transform: uppercase; margin-top: 8px;
+  position: relative; overflow: hidden;
+}
+.tfill::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(45deg,
+    transparent 0 9px, rgba(0,255,156,0.022) 9px 10px);
 }
 table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 12px; }
 th, td { text-align: left; padding: 5px 9px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -520,6 +526,50 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
   .regname { font-size: 22px; }
   .band { margin-left: 2px; margin-right: 2px; }
 }
+/* ── v2.8 · toast feedback · j/k journal nav · regime sequence ── */
+#toasts {
+  position: fixed; right: 16px; bottom: 52px; z-index: 80;
+  display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none; max-width: min(360px, 82vw);
+}
+.toast {
+  display: flex; align-items: center; gap: 9px;
+  background: #0E1A16; border: 1px solid #1E332B;
+  border-left: 3px solid var(--green);
+  padding: 9px 13px; font-size: 11.5px; letter-spacing: .04em;
+  color: #B8C4BF; box-shadow: 0 6px 22px rgba(0,0,0,.5);
+  animation: toastin .22s ease;
+}
+.toast.warn { border-left-color: var(--amber); }
+.toast.info { border-left-color: var(--dim); }
+.toast .tled {
+  width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: var(--green); box-shadow: 0 0 8px var(--green);
+}
+.toast.warn .tled { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.toast.info .tled { background: var(--dim); box-shadow: none; }
+.toast.out { animation: toastout .25s ease forwards; }
+@keyframes toastin { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes toastout { to { opacity: 0; transform: translateX(14px); } }
+#tbody tr.kfocus td { background: #0F1D18; }
+#tbody tr.kfocus td:first-child { box-shadow: inset 2px 0 0 var(--amber); }
+.kjnum {
+  display: inline-block; min-width: 17px; margin-right: 2px;
+  color: var(--amber); font-size: 9.5px; letter-spacing: 0;
+}
+.regstrip {
+  display: flex; gap: 2px; height: 10px;
+  align-items: stretch; margin-top: 6px;
+}
+.regstrip i { flex: 1 1 0; min-width: 2px; opacity: .8; transition: opacity .12s ease; }
+.regstrip i:hover { opacity: 1; outline: 1px solid var(--green); }
+.regstrip .rg-up { background: var(--green); }
+.regstrip .rg-dn { background: var(--red); }
+.regstrip .rg-rng { background: #8A9734; }
+.regstrip i.rg-new { outline: 1px solid rgba(0,255,156,.55); outline-offset: 1px; }
+.regstripempty { color: var(--dim); font-size: 10.5px; letter-spacing: .05em; }
+.mxlab2 { margin-top: 13px; }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
@@ -723,6 +773,8 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
         </div>
       </div>
       <div class="mxregimes" id="mxRegimes"></div>
+      <div class="mxlab mxlab2">regime sequence · oldest → newest</div>
+      <div class="regstrip" id="mxRegStrip" role="img" aria-label="regime of each fill, in chronological order"></div>
     </section>
 
     <section class="panel s4" id="huntclock-panel" aria-label="hunt window clock">
@@ -734,10 +786,12 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
     </section>
   </main>
 
+  <div id="toasts" aria-live="polite" aria-label="console notifications"></div>
+
   <!-- ── footer ── -->
   <footer id="footer">
     <span>paper-first · losses published not hidden · not investment advice</span>
-    <span class="khint" title="keyboard: s/p standby · l log · d demo · ? this help" aria-hidden="true"><kbd>s</kbd><kbd>p</kbd><kbd>l</kbd><kbd>d</kbd><kbd>?</kbd></span>
+    <span class="khint" title="keyboard: s/p standby · j/k journal · o open · l log · d demo · ? help" aria-hidden="true"><kbd>s</kbd><kbd>p</kbd><kbd>j</kbd><kbd>k</kbd><kbd>o</kbd><kbd>l</kbd><kbd>d</kbd><kbd>?</kbd></span>
     <span id="verChip" title="console version — pyproject is the single source of truth">console <b>—</b></span>
     <a class="github" href="https://github.com/muhammadwhizz-web/gold-reaper" target="_blank" rel="noopener">muhammadwhizz-web/gold-reaper</a>
   </footer>
@@ -763,6 +817,8 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
   <div class="khpanel">
     <div class="kht">console shortcuts</div>
     <div class="khr"><span class="kkeys"><kbd>s</kbd><kbd>/</kbd><kbd>p</kbd></span><span class="kdesc">standby — pause new entries (live: server kill-switch)</span></div>
+    <div class="khr"><span class="kkeys"><kbd>j</kbd><kbd>/</kbd><kbd>k</kbd></span><span class="kdesc">walk the journal row by row (amber marker)</span></div>
+    <div class="khr"><span class="kkeys"><kbd>o</kbd></span><span class="kdesc">open the marked row's detail drawer</span></div>
     <div class="khr"><span class="kkeys"><kbd>l</kbd></span><span class="kdesc">toggle the SSE log panel</span></div>
     <div class="khr"><span class="kkeys"><kbd>d</kbd></span><span class="kdesc">demo mode — hides ops chrome, shows the demo badge</span></div>
     <div class="khr"><span class="kkeys"><kbd>esc</kbd></span><span class="kdesc">close drawer / overlay</span></div>
@@ -1009,6 +1065,7 @@ function buildEqChart() {
   if (!HAS_CHART) return;
   eqChart = new Chart($("eqCanvas"), {
     type: "line",
+    plugins: [endChip],
     data: { labels: [], datasets: [
       { label: "equity", data: [], borderColor: "#00FF9C", borderWidth: 1.5,
         pointRadius: 0, pointHoverRadius: 3, tension: 0.25, fill: true,
@@ -1167,14 +1224,14 @@ function renderTrades(mode) {
         ? "no fills yet — journal open, first hunt pending"
         : "no trades yet") + '</div></td></tr>';
   } else {
-    tb.innerHTML = TRADES.map(t => {
+    tb.innerHTML = TRADES.map((t, idx) => {
       const n = parseNum(t.pnl);
       const pc = n === null ? "zero" : n > 0 ? "pos" : n < 0 ? "neg" : "zero";
       const sc = String(t.side).toUpperCase() === "LONG" ? "s-long" : "s-short";
       const rn = parseNum(t.r);
       const rc = rn === null ? "zero" : rn > 0 ? "pos" : rn < 0 ? "neg" : "zero";
       return `<tr class="rowlink" title="open detail">
-        <td class="dim">${esc(t.ts)}</td>
+        <td class="dim"><span class="kjnum">${knavIdx === idx ? (idx + 1) : ""}</span>${esc(t.ts)}</td>
         <td class="${sc}">${esc(t.side)}</td>
         <td class="num">${esc(t.size_oz)}</td>
         <td class="num">${esc(t.entry)}</td>
@@ -1198,6 +1255,8 @@ function renderTrades(mode) {
     if (tr && TRADES[drawerIdx]) tr.classList.add("sel");
     else closeDrawer();
   }
+  applyKnav();
+  renderRegStrip();
 }
 document.querySelector("#ttable thead").addEventListener("click", e => {
   const th = e.target.closest("th"); if (!th) return;
@@ -1223,6 +1282,7 @@ $("exportBtn").addEventListener("click", () => {
   a.download = "gold-reaper-trades.csv";
   a.click();
   URL.revokeObjectURL(a.href);
+  showToast("journal exported · " + TRADES.length + " rows");
 });
 
 /* ── trade detail drawer (click a row — same data, dignified layout) ── */
@@ -1230,6 +1290,7 @@ let drawerIdx = -1;
 function openDrawer(i) {
   const t = TRADES[i]; if (!t) return;
   drawerIdx = i;
+  knavIdx = i;   // j/k and the drawer share one cursor
   const side = String(t.side).toUpperCase();
   const dSide = $("dSide");
   dSide.textContent = side;
@@ -1263,6 +1324,7 @@ function closeDrawer() {
   $("drawer").classList.remove("open");
   $("backdrop").classList.remove("on");
   document.querySelectorAll("#tbody tr.sel").forEach(tr => tr.classList.remove("sel"));
+  clearKnav();
 }
 $("tbody").addEventListener("click", e => {
   const tr = e.target.closest("tr"); if (!tr || !TRADES.length) return;
@@ -1350,6 +1412,7 @@ function svgUnderwater(series) {
 }
 function renderMetrics(m) {
   if (!m || m.source === undefined) return;
+  renderRegStrip();
   const live = m.source === "live";
   $("mxMeta").textContent = live
     ? (m.n ? m.n + " realized fills · live" : "live · awaiting first fill")
@@ -1568,7 +1631,8 @@ async function fetchTrades() {
 /* ─────────────────────────────────────────────── keyboard shortcuts ── */
 let serverStandby = false, localStandby = false;
 function applyStandby(on) {
-  serverStandby = !!on;
+  const next = !!on, changed = serverStandby !== next;
+  serverStandby = next;
   const b = $("standbyBtn");
   b.setAttribute("aria-pressed", String(serverStandby));
   b.textContent = serverStandby ? "resume" : "standby";
@@ -1578,12 +1642,20 @@ function applyStandby(on) {
     : "press s to resume";
   const st = serverStandby || localStandby;
   if (favBits.standby !== st) { favBits.standby = st; refreshFavLED(); }
+  if (changed) showToast(next
+    ? "kill-switch engaged · new entries paused"
+    : "kill-switch released · hunting resumes", next ? "warn" : "ok");
 }
 function toggleStandby() {  // local preview; the server kill-switch wins
-  if (serverStandby) return;
+  if (serverStandby) {
+    showToast("kill-switch owns standby · resume via the button", "info");
+    return;
+  }
   localStandby = !localStandby;
   document.body.classList.toggle("standby", localStandby);
   if (favBits.standby !== localStandby) { favBits.standby = localStandby; refreshFavLED(); }
+  showToast(localStandby ? "local preview paused · s to resume"
+                         : "local preview resumed", localStandby ? "warn" : "info");
 }
 function toggleLog() { const p = $("log-panel"); p.hidden = !p.hidden; }
 function toggleDemo() { document.body.classList.toggle("demo"); }
@@ -1598,6 +1670,9 @@ window.addEventListener("keydown", e => {
   }
   if (k === "?") { $("kbdHelp").classList.toggle("on"); return; }
   if (k === "s" || k === "p") toggleStandby(); // p is an alias of s
+  else if (k === "j") knavMove(1);
+  else if (k === "k") knavMove(-1);
+  else if ((k === "o" || k === "enter") && knavIdx >= 0) openDrawer(knavIdx);
   else if (k === "l") toggleLog();
   else if (k === "d") toggleDemo();
 });
@@ -1614,6 +1689,64 @@ async function fetchStandby() {
     const r = await fetch("/api/standby", { cache: "no-store" });
     applyStandby((await r.json()).on);
   } catch (_) { /* offline LED already surfaces it */ }
+}
+
+/* ── toast feedback · one node per message, auto-dismiss, aria-live ── */
+function showToast(msg, kind) {
+  const box = $("toasts"); if (!box) return;
+  const t = document.createElement("div");
+  t.className = "toast " + (kind || "ok");
+  t.innerHTML = '<span class="tled"></span>' + esc(msg);
+  box.appendChild(t);
+  while (box.children.length > 4) box.removeChild(box.firstChild);
+  setTimeout(() => {
+    t.classList.add("out");
+    setTimeout(() => t.remove(), 260);
+  }, 3200);
+}
+
+/* ── j/k journal navigation — amber marker, drawer follows when open ── */
+let knavIdx = -1;
+function applyKnav() {
+  const tb = $("tbody"); if (!tb) return;
+  const drawerOpen = $("drawer").classList.contains("open");
+  [...tb.children].forEach((tr, j) => {
+    if (tr.tagName !== "TR") return;
+    const on = !drawerOpen && j === knavIdx;
+    tr.classList.toggle("kfocus", on);
+    const g = tr.querySelector(".kjnum");
+    if (g) g.textContent = on ? (j + 1) : "";
+  });
+  const tr = tb.children[knavIdx];
+  if (tr && tr.tagName === "TR" && tr.scrollIntoView)
+    tr.scrollIntoView({ block: "nearest" });
+}
+function clearKnav() { if (knavIdx < 0) return; knavIdx = -1; applyKnav(); }
+function knavMove(d) {
+  const n = TRADES.length; if (!n) return;
+  knavIdx = knavIdx < 0 ? (d > 0 ? 0 : n - 1)
+                        : Math.max(0, Math.min(n - 1, knavIdx + d));
+  applyKnav();
+  if ($("drawer").classList.contains("open")) openDrawer(knavIdx);
+}
+
+/* ── regime sequence strip — one segment per fill, chronological ── */
+function renderRegStrip() {
+  const box = $("mxRegStrip"); if (!box) return;
+  const rows = TRADES.filter(t => t && t.regime)
+    .slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+  if (!rows.length) {
+    box.innerHTML = '<div class="regstripempty">no fills yet — segments appear with the first close</div>';
+    return;
+  }
+  const cls = r => {
+    const n = String(r.regime).toUpperCase();
+    return n.includes("UP") ? "rg-up" : n.includes("DOWN") ? "rg-dn" : "rg-rng";
+  };
+  box.innerHTML = rows.map((t, i) =>
+    '<i class="' + cls(t) + (i === rows.length - 1 ? " rg-new" : "") +
+    '" title="' + esc(t.ts) + " · " + esc(t.regime) + " · " + esc(t.pnl) + ' USD"></i>'
+  ).join("");
 }
 
 /* ───────────────────────────────────────── news radar ── */
@@ -1679,12 +1812,52 @@ function renderTimeline() {
   el.innerHTML = html;
 }
 
+/* ── equity end-value chip — glowing last point + price tag (v2.8) ── */
+const endChip = {
+  id: "endChip",
+  afterDatasetsDraw(c) {
+    if (!c.chartArea) return;
+    const meta = c.getDatasetMeta(0);
+    const p = meta && meta.data.length ? meta.data[meta.data.length - 1] : null;
+    if (!p || p.x === undefined) return;
+    const { ctx } = c;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+    ctx.fillStyle = "#00FF9C";
+    ctx.shadowColor = "rgba(0,255,156,.9)";
+    ctx.shadowBlur = 7;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    const data = c.data.datasets[0].data;
+    const v = data[data.length - 1];
+    if (typeof v === "number") {
+      const label = "$" + fmtMoney(v);
+      ctx.font = "9.5px 'JetBrains Mono', monospace";
+      const w = ctx.measureText(label).width + 10;
+      const x = Math.min(c.chartArea.right - w, p.x + 8);
+      const y = Math.max(c.chartArea.top + 2, p.y - 7);
+      ctx.fillStyle = "rgba(10,20,17,.92)";
+      ctx.strokeStyle = "rgba(0,255,156,.35)";
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x, y, w, 14, 2); else ctx.rect(x, y, w, 14);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#00FF9C";
+      ctx.fillText(label, x + 5, y + 10);
+    }
+    ctx.restore();
+  }
+};
+
 /* ─────────────────────────────────────────────── boot ── */
 buildGauges();
 buildEqChart();
 buildRadarChart();
 tickClock(); setInterval(() => { tickClock(); huntTick(); renderTimeline(); }, 1000);
 rainSize();
+setTimeout(() => showToast(window.MOCK_DATA
+  ? "console attached · mock replay"
+  : "console attached · live telemetry", "info"), 700);
 refreshFavLED();  // draw the LED favicon immediately — idle state included
                   // (offline/standby/hunt flips re-draw it; without this the
                   // static Pages build never engaged the LED at all)

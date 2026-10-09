@@ -37,7 +37,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-VERSION = "2.7.0"
+VERSION = "2.8.0"
 HEARTBEAT_FILE = ROOT / "data" / "heartbeat.json"
 PID_FILE = ROOT / "data" / "bot.pid"
 STANDBY_FILE = ROOT / "data" / "standby.flag"
