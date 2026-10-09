@@ -5,13 +5,24 @@ Exness retail accounts trade gold (XAUUSD) through the MT5 terminal.
 The official `MetaTrader5` python package talks to terminal64.exe
 (Windows natively; Linux via Wine — see README).
 
+Bulletproofing (Phase 3 of the installer spec):
+  - auto-detects the terminal in the standard install locations
+    (MT5_PATH in .env overrides)
+  - login retries 3x with clear errors, then fails cleanly
+  - symbol fallback chain: XAUUSD -> XAUUSDm -> XAUUSD.raw -> GOLD
+  - verifies demo vs REAL account and logs which one is connected
+  - ensure_connected() for the health monitor / auto-reconnect loop
+
 If MT5 is not available (wrong platform / terminal closed) this adapter
 falls back to live price via yfinance so the bot stays operational in
 shadow mode, and refuses to send orders.
 """
 from __future__ import annotations
 
+import os
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 
@@ -19,6 +30,35 @@ from brokers.base import BrokerBase, OrderResult, Position
 from core.logger import cprint, RED, YELLOW
 
 TF_MAP = {"h1": 16385, "h4": 16388, "d1": 16408}  # MT5 constants
+
+# where terminal64.exe hides (checked in order; MT5_PATH wins)
+TERMINAL_CANDIDATES = [
+    r"C:\Program Files\MetaTrader 5\terminal64.exe",
+    r"C:\Program Files\Exness MetaTrader 5\terminal64.exe",
+    r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe",
+    r"C:\Program Files (x86)\MetaTrader 5\terminal64.exe",
+    r"C:\Program Files (x86)\Exness MetaTrader 5\terminal64.exe",
+]
+MT5_DOWNLOAD = "https://www.exness.com/downloads/  (or https://www.metatrader5.com/en/download)"
+
+# gold symbol aliases brokers use
+SYMBOL_FALLBACKS = ["XAUUSD", "XAUUSDm", "XAUUSD.raw", "GOLD", "XAUUSD.s", "XAUUSDz"]
+
+# human-readable retcodes (most common rejections)
+RETCODE_HINT = {
+    10004: "requote — retry, do not spam orders",
+    10006: "request rejected by broker",
+    10013: "invalid request (check volume/price)",
+    10014: "invalid volume (below broker minimum)",
+    10015: "invalid price",
+    10016: "invalid stops (SL/TP too close)",
+    10018: "MARKET CLOSED — the bot will idle until open",
+    10019: "NOT ENOUGH MONEY — reduce risk or deposit",
+    10027: "AUTOTRADING DISABLED in terminal — enable the AutoTrading button",
+    10028: "order blocked by account (invest password / manager)",
+    10030: "unsupported filling mode",
+    10044: "only position closing allowed (account restriction)",
+}
 
 try:
     import MetaTrader5 as mt5  # type: ignore
@@ -28,6 +68,26 @@ except ImportError:
     MT5_AVAILABLE = False
 
 
+def find_terminal() -> str:
+    """Locate terminal64.exe. Returns path or ''. Env MT5_PATH wins."""
+    custom = os.getenv("MT5_PATH", "").strip()
+    if custom and Path(custom).exists():
+        return custom
+    for cand in TERMINAL_CANDIDATES:
+        if Path(cand).exists():
+            return cand
+    # last sweep: %APPDATA%\MetaQuotes\Terminal\*\helpprofile? no — install
+    # roots only; keep it deterministic and cheap.
+    return ""
+
+
+def _trade_mode_name(info) -> str:
+    if mt5 is None or info is None:
+        return "UNKNOWN"
+    tm = getattr(info, "trade_mode", -1)
+    return {0: "DEMO", 1: "CONTEST", 2: "REAL"}.get(tm, f"mode{tm}")
+
+
 class ExnessMT5(BrokerBase):
     name = "EXNESS-MT5"
 
@@ -35,6 +95,7 @@ class ExnessMT5(BrokerBase):
         self.cfg = cfg
         self.connected = False
         self.symbol = cfg.mt5_symbol
+        self._last_error = ""
 
     # ------------------------------------------------------------- connect
     def connect(self) -> bool:
@@ -42,27 +103,86 @@ class ExnessMT5(BrokerBase):
             cprint("[MT5] MetaTrader5 package not installed on this platform "
                    "(Windows/Wine required). Running in SHADOW mode.", YELLOW)
             return False
-        kwargs = {}
-        if self.cfg.mt5_path:
-            kwargs["path"] = self.cfg.mt5_path
+
+        # 1. locate terminal — clear error + download link if absent
+        term = find_terminal()
+        kwargs: dict = {}
+        if term:
+            kwargs["path"] = term
+        elif os.name == "nt":
+            cprint(f"[MT5] terminal64.exe not found in standard locations.\n"
+                   f"      Install MetaTrader 5 / Exness MT5: {MT5_DOWNLOAD}\n"
+                   f"      or set MT5_PATH=C:\\...\\terminal64.exe in .env", RED)
+
+        # 2. initialize
         if not mt5.initialize(**kwargs):
-            cprint(f"[MT5] initialize() failed: {mt5.last_error()}", RED)
+            self._last_error = f"initialize failed: {mt5.last_error()}"
+            cprint(f"[MT5] {self._last_error}", RED)
             return False
+
+        # 3. login — 3 retries, then clean fail
         if self.cfg.mt5_login:
-            ok = mt5.login(self.cfg.mt5_login, password=self.cfg.mt5_password,
-                           server=self.cfg.mt5_server)
-            if not ok:
-                cprint(f"[MT5] login failed: {mt5.last_error()}", RED)
+            for attempt in range(1, 4):
+                if mt5.login(self.cfg.mt5_login, password=self.cfg.mt5_password,
+                             server=self.cfg.mt5_server):
+                    break
+                err = mt5.last_error()
+                self._last_error = f"login failed (attempt {attempt}/3): {err}"
+                cprint(f"[MT5] {self._last_error}", RED)
+                if attempt < 3:
+                    time.sleep(2)
+            else:
+                cprint("[MT5] giving up after 3 login attempts. Check "
+                       "MT5_LOGIN / MT5_PASSWORD / MT5_SERVER in .env", RED)
+                mt5.shutdown()
                 return False
-        if not mt5.symbol_select(self.symbol, True):
-            cprint(f"[MT5] symbol {self.symbol} not found: {mt5.last_error()}", RED)
+
+        # 4. symbol — fallback chain, verify trading enabled
+        if not self._select_symbol():
+            mt5.shutdown()
             return False
+
+        ai = mt5.account_info()
+        if ai is None:
+            cprint("[MT5] account_info() returned None after login", RED)
+            mt5.shutdown()
+            return False
+        mode = _trade_mode_name(ai)
         info = mt5.symbol_info(self.symbol)
-        cprint(f"[MT5] connected | {self.symbol} | balance ${mt5.account_info().balance:,.2f}",
+        # symbol trade mode: 0=DISABLED 1=LONGONLY 2=SHORTONLY 3=CLOSEONLY 4=FULL
+        smode = getattr(info, "trade_mode", 4) if info else 4
+        trade_allowed = smode not in (0, 3)
+        cprint(f"[MT5] connected | {self.symbol} | account {mode} | "
+               f"balance ${ai.balance:,.2f} | trading "
+               f"{'enabled' if trade_allowed else 'check AutoTrading button'}",
                YELLOW)
+        if mode == "REAL":
+            cprint("[MT5] *** REAL ACCOUNT — live money. Verify PAPER_MODE=false "
+                   "was an intentional decision. ***", YELLOW)
         self.connected = True
-        _ = info
         return True
+
+    def _select_symbol(self) -> bool:
+        tried: list[str] = []
+        for sym in dict.fromkeys([self.cfg.mt5_symbol] + SYMBOL_FALLBACKS):
+            if not sym:
+                continue
+            if mt5.symbol_select(sym, True):
+                if sym != self.cfg.mt5_symbol:
+                    cprint(f"[MT5] symbol fallback: {self.cfg.mt5_symbol} -> {sym}",
+                           YELLOW)
+                self.symbol = sym
+                return True
+            tried.append(sym)
+        cprint(f"[MT5] no gold symbol found. tried: {', '.join(tried)}", RED)
+        self._last_error = "no tradeable gold symbol"
+        return False
+
+    def ensure_connected(self) -> bool:
+        """Auto-reconnect entry point for brokers/health.py."""
+        if self.connected:
+            return True
+        return self.connect()
 
     def disconnect(self) -> None:
         if MT5_AVAILABLE and self.connected:
@@ -134,9 +254,13 @@ class ExnessMT5(BrokerBase):
         }
         res = mt5.order_send(req)
         if res is None:
-            return OrderResult(False, error="order_send None")
+            return OrderResult(False, error="order_send None (terminal busy)")
         if res.retcode != mt5.TRADE_RETCODE_DONE:
-            return OrderResult(False, error=f"retcode {res.retcode}: {res.comment}")
+            hint = RETCODE_HINT.get(res.retcode, "")
+            msg = f"retcode {res.retcode}: {res.comment}"
+            if hint:
+                msg = f"{msg} — {hint}"
+            return OrderResult(False, error=msg)
         cprint(f"[MT5] {side} {lots} lots @ {res.price} | sl {sl:.2f} tp {tp:.2f}", YELLOW)
         return OrderResult(True, ticket=str(res.order), price=float(res.price))
 

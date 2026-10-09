@@ -1,9 +1,9 @@
 [project]
 name = "gold-reaper"
-version = "2.1.0"
+version = "2.2.0"
 description = "Autonomous XAU/USD trading system - walk-forward validated - MT5 + Bitget + paper - dark-terminal dashboard"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10,<3.13"
 license = { file = "LICENSE" }
 authors = [{ name = "muhammadwhizz-web" }]
 keywords = [

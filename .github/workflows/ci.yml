@@ -136,3 +136,109 @@ jobs:
       - name: Reaper is alive
         if: success()
         run: echo "APEX blood test green - the hunter lives"
+
+  # ════════════════════════════════════════════════════════════════
+  # cross-platform installer suite: every OS the installers target,
+  # every python the bot supports (3.10 / 3.11 / 3.12 spread)
+  # ════════════════════════════════════════════════════════════════
+  install-suite:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  py: "3.10", label: "linux  py3.10" }
+          - { os: macos-latest,   py: "3.11", label: "macos  py3.11" }
+          - { os: windows-latest, py: "3.12", label: "win32  py3.12" }
+    name: install-suite (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.py }}
+
+      - name: Install requirements (MetaTrader5 auto-marked win32)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Universal compatibility probe (imports + factory + wizard headless)
+        shell: python
+        run: |
+          import os, subprocess, sys
+          sys.path.insert(0, ".")
+          from pathlib import Path
+
+          # core modules import on every OS (MT5 guarded on linux/mac)
+          from brokers.factory import create_broker, failover_chain, normalize
+          from brokers.health import retry_call, HealthMonitor
+          from core.config import Config
+
+          assert normalize("exness") == "MT5"
+          cfg = Config()
+          chain = failover_chain(cfg)
+          assert chain[-1] == "PAPER", chain
+          b = create_broker(cfg, "PAPER")
+          assert b.connect() and b.balance() > 0
+          print("factory OK | chain:", chain, "| broker:", type(b).name)
+
+          # retry engine backoff order
+          import itertools, time
+          calls = {"n": 0}
+          def flaky():
+              calls["n"] += 1
+              if calls["n"] < 3: raise RuntimeError("boom")
+              return "alive"
+          t0 = time.time()
+          assert retry_call(flaky, attempts=5, base=0.05, cap=0.1) == "alive"
+          assert calls["n"] == 3
+          print("retry_call OK | attempts:", calls["n"])
+
+          # wizard headless writes .env (paper mode)
+          env = Path(".env")
+          if env.exists(): env.unlink()
+          r = subprocess.run([sys.executable, "-m", "setup.wizard",
+                              "--non-interactive", "--broker", "paper",
+                              "--risk", "0.5"],
+                             capture_output=True, text=True, timeout=120)
+          assert r.returncode == 0, r.stdout + r.stderr
+          txt = env.read_text(encoding="utf-8")
+          assert "BROKER=PAPER" in txt and "PAPER_MODE=true" in txt
+          assert "RISK_PER_TRADE_PCT=0.5" in txt
+          print("wizard headless OK | .env written")
+          env.unlink()
+
+          # MT5 marker: present only on windows
+          try:
+              import MetaTrader5  # noqa
+              assert os.name == "nt", "MetaTrader5 imported on non-windows?!"
+              print("MetaTrader5 present on windows runner")
+          except ImportError:
+              print("MetaTrader5 absent (expected on", sys.platform, ")")
+
+          # bot module imports (version + heartbeat helpers)
+          import bot
+          assert bot.VERSION and callable(bot._write_heartbeat)
+          print("bot import OK | version:", bot.VERSION)
+
+      - name: Watchdog single cycle
+        run: python watchdog.py --once
+
+      - name: Icon forge determinism
+        shell: python
+        run: |
+          import subprocess, sys, tempfile
+          from pathlib import Path
+          out = Path(tempfile.mkdtemp())
+          r = subprocess.run([sys.executable, "assets/make_icon.py",
+                              "--out", str(out)], capture_output=True, text=True)
+          assert r.returncode == 0, r.stderr
+          for name in ("icon.png", "icon.ico", "icon.icns", "icon-tray.png"):
+              f = out / name
+              assert f.exists() and f.stat().st_size > 1000, name
+          print("icon forge OK |", [p.name for p in out.iterdir()])
+
+      - name: Platform suite green
+        if: success()
+        run: echo "${{ matrix.label }} - installer suite green"

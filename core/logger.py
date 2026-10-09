@@ -34,7 +34,7 @@ def setup_logger(log_file: Path, name: str = "reaper") -> logging.Logger:
     log.setLevel(logging.INFO)
     fmt = logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s", "%Y-%m-%d %H:%M:%S")
 
-    fh = RotatingFileHandler(log_file, maxBytes=2_000_000, backupCount=5, encoding="utf-8")
+    fh = RotatingFileHandler(log_file, maxBytes=2_000_000, backupCount=30, encoding="utf-8")
     fh.setFormatter(fmt)
     log.addHandler(fh)
 

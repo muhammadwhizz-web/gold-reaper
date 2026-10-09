@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import signal
 import sys
 import threading
@@ -36,14 +37,19 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
+VERSION = "2.2.0"
+HEARTBEAT_FILE = ROOT / "data" / "heartbeat.json"
+PID_FILE = ROOT / "data" / "bot.pid"
+UPDATE_REPO = "muhammadwhizz-web/gold-reaper"
+
 from brokers.base import BrokerBase  # noqa: E402
-from brokers.bitget_broker import BitgetBroker  # noqa: E402
-from brokers.mt5_broker import ExnessMT5  # noqa: E402
+from brokers.factory import connect_with_failover, create_broker  # noqa: E402
+from brokers.health import HealthMonitor  # noqa: E402
 from brokers.paper_broker import PaperBroker  # noqa: E402
 from core import audit  # noqa: E402
 from core.config import CONFIG, Config  # noqa: E402
 from core.indicators import atr as atr_fn  # noqa: E402
-from core.logger import CYAN, GREEN, GRAY, RED, YELLOW, banner, cprint, setup_logger  # noqa: E402
+from core.logger import GREEN, GRAY, RED, YELLOW, banner, cprint, setup_logger  # noqa: E402
 from core.news_brain import NewsBrain  # noqa: E402
 from core.notify import notify  # noqa: E402
 from core.regime import RegimeDetector  # noqa: E402
@@ -158,6 +164,24 @@ class MetaModelServer:
 import json  # noqa: E402  (kept after imports used above)
 
 
+def _write_heartbeat(mode: str, equity: float | None) -> None:
+    """Liveness file for watchdog.py and the tray. Cheap, atomic-enough."""
+    try:
+        HEARTBEAT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = HEARTBEAT_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps({
+            "ts": time.time(),
+            "iso": datetime.now(timezone.utc).isoformat(),
+            "pid": os.getpid(),
+            "version": VERSION,
+            "mode": mode,
+            "equity": equity,
+        }), encoding="utf-8")
+        tmp.replace(HEARTBEAT_FILE)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # ═════════════════════════════════════════════════════════════════ the bot
 
 
@@ -179,14 +203,17 @@ class ReaperApexBot:
         self._meta = MetaModelServer()
         self._apexx: ApexX | None = None
         self._last_calendar_pull = 0.0
+        self._health: HealthMonitor | None = None
+        self._last_maintenance = 0.0
+        self._last_update_check = 0.0
+        self._last_equity: float | None = None
+        self._mode = "PAPER" if (getattr(cfg, "paper", False)
+                                 or cfg.broker == "PAPER") else cfg.broker
 
     # ------------------------------------------------------------ lifecycle
     def build_broker(self, choice: str) -> BrokerBase:
-        if choice == "MT5":
-            return ExnessMT5(self.cfg)
-        if choice == "BITGET":
-            return BitgetBroker(self.cfg)
-        return PaperBroker(self.cfg)
+        """Kept for compatibility; delegates to the universal factory."""
+        return create_broker(self.cfg, choice)
 
     def _failover_chain(self) -> list[str]:
         primary = self.cfg.broker
@@ -218,20 +245,21 @@ class ReaperApexBot:
         self._news = NewsBrain(self._store, self.cfg)
         self._apexx = ApexX(self.cfg, ml_auc=self._meta.auc)
 
-        # broker failover chain
-        for choice in self._failover_chain():
-            broker = self.build_broker(choice)
-            cprint(f"[*] trying broker : {choice}", GRAY)
-            if broker.connect():
-                self.broker = broker
-                break
-            try:
-                broker.disconnect()
-            except Exception:  # noqa: BLE001
-                pass
-        else:
-            self.broker = PaperBroker(self.cfg)
-            self.broker.connect()
+        # broker failover chain via universal factory (MT5 -> BITGET -> PAPER)
+        self.broker, tried = connect_with_failover(self.cfg, log)
+        for kind in tried:
+            cprint(f"[*] tried broker  : {kind}", GRAY)
+        cprint(f"[*] active broker : {type(self.broker).name}", YELLOW)
+
+        # 24/7 resilience: broker health probes + pid file (watchdog/tray)
+        if not isinstance(self.broker, PaperBroker) and \
+                hasattr(self.broker, "ensure_connected"):
+            self._health = HealthMonitor(self.broker, self.cfg, log=log)
+            self._health.start()
+        try:
+            PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
 
         # regime detector warmup
         try:
@@ -257,6 +285,8 @@ class ReaperApexBot:
         try:
             while self.running:
                 self.tick()
+                _write_heartbeat(self._mode, self._last_equity)
+                self._maintenance()
                 time.sleep(self.cfg.poll_seconds)
         except KeyboardInterrupt:
             pass
@@ -277,10 +307,16 @@ class ReaperApexBot:
             for p in self.broker.open_positions():
                 log.info("open position on exit: %s %s %.2f oz @ %.2f",
                          p.ticket, p.side, p.size_oz, p.entry)
+            if self._health:
+                self._health.stop()
             self.risk.save()
             self.apex.save()
             self.broker.disconnect()
             self._store.close()
+            try:
+                PID_FILE.unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
             cprint(f"[*] day pnl: {self.apex.state.day_pnl:+.2f} USD | "
                    f"balance {self.apex.state.balance:,.2f}", GREEN)
             cprint("[✓] APEX offline. state saved.", GRAY)
@@ -326,6 +362,7 @@ class ReaperApexBot:
         try:
             eq = self.broker.equity()
             if eq > 0:
+                self._last_equity = eq
                 self.apex.state.equity = eq
                 self.apex.state.balance = max(self.apex.state.balance, eq) \
                     if self.apex.state.balance <= 0 else eq
@@ -469,6 +506,67 @@ class ReaperApexBot:
         except Exception:  # noqa: BLE001
             pass
 
+    # ------------------------------------------------------------ maintenance
+    def _maintenance(self) -> None:
+        """Hourly 24/7 guards: clock drift, memory, disk, update check.
+        Every sub-guard is best-effort; none may ever kill the tick."""
+        now = time.time()
+        if now - self._last_maintenance < 3600:
+            return
+        self._last_maintenance = now
+
+        # 1. clock drift vs NTP (alert only, never acts)
+        try:
+            drift = _ntp_drift_seconds()
+            if drift is not None and abs(drift) > 5.0:
+                log.warning("clock drift %.1fs vs NTP - sync your OS clock", drift)
+                notify("CLOCK DRIFT",
+                       f"system clock drifts {drift:+.1f}s vs NTP. "
+                       "Sync time (w32tm /resync or timedatectl) - candles misalign.")
+        except Exception:  # noqa: BLE001
+            pass
+
+        # 2. memory guard: > 500 MB -> clear internal caches
+        try:
+            rss_mb = _rss_mb()
+            if rss_mb and rss_mb > 500:
+                log.warning("memory guard: RSS %.0f MB > 500 MB - clearing caches",
+                            rss_mb)
+                import gc
+                gc.collect()
+                if self._feed:
+                    self._feed._row = None
+                    self._feed._row_ts = None
+                if isinstance(self.broker, PaperBroker):
+                    self.broker._cache = None
+        except Exception:  # noqa: BLE001
+            pass
+
+        # 3. disk guard: < 1 GB free -> alert
+        try:
+            import shutil
+            free_gb = shutil.disk_usage(ROOT).free / 1e9
+            if free_gb < 1.0:
+                log.warning("disk guard: %.2f GB free < 1 GB - clean logs", free_gb)
+                notify("DISK LOW",
+                       f"{free_gb:.2f} GB free on the reaper host. "
+                       "Clean data/*.log backups or the machine may wedge.")
+        except Exception:  # noqa: BLE001
+            pass
+
+        # 4. auto-update check (daily, notify only - never auto-applies)
+        if now - self._last_update_check > 86400:
+            self._last_update_check = now
+            try:
+                latest = _latest_release_tag()
+                if latest and latest.lstrip("v") != VERSION.lstrip("v"):
+                    log.info("update available: %s (local %s)", latest, VERSION)
+                    notify("UPDATE AVAILABLE",
+                           f"gold-reaper {latest} released (you run {VERSION}). "
+                           "Review the changelog, then update manually.")
+            except Exception:  # noqa: BLE001
+                pass
+
     def _heartbeat(self, msg: str) -> None:
         now = time.time()
         if now - self._last_heartbeat >= self.cfg.heartbeat_minutes * 60:
@@ -480,6 +578,80 @@ class ReaperApexBot:
 
 def sess_str(ts) -> str:
     return session_of(ts)
+
+
+# ══════════════════════════════════════════════ 24/7 maintenance helpers
+
+
+def _ntp_drift_seconds(server: str = "pool.ntp.org") -> float | None:
+    """SNTP drift estimate, 5s timeout. None on any failure."""
+    import socket
+    import struct
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(5.0)
+            pkt = b"\x1b" + 47 * b"\0"
+            t0 = time.time()
+            s.sendto(pkt, (server, 123))
+            data, _ = s.recvfrom(512)
+            t3 = time.time()
+        if len(data) < 48:
+            return None
+        secs = struct.unpack("!I", data[40:44])[0]
+        frac = struct.unpack("!I", data[44:48])[0]
+        ntp_ts = secs + frac / 2**32 - 2208988800  # NTP epoch -> unix
+        rtt = t3 - t0
+        return (t0 + t3) / 2 - ntp_ts - rtt / 2
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _rss_mb() -> float | None:
+    """Resident memory MB: Linux via /proc, Windows via ctypes, else None."""
+    try:
+        if os.name == "posix":
+            for line in Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
+                if line.startswith("VmRSS:"):
+                    return float(line.split()[1]) / 1024
+            return None
+        if os.name == "nt":
+            import ctypes
+            import ctypes.wintypes as wt
+
+            class PMC(ctypes.Structure):
+                _fields_ = [("cb", wt.DWORD), ("PageFaultCount", wt.DWORD),
+                            ("PeakWorkingSetSize", ctypes.c_size_t),
+                            ("WorkingSetSize", ctypes.c_size_t),
+                            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                            ("PagefileUsage", ctypes.c_size_t),
+                            ("PeakPagefileUsage", ctypes.c_size_t)]
+            pmc = PMC()
+            pmc.cb = ctypes.sizeof(PMC)
+            h = ctypes.windll.kernel32.GetCurrentProcess()  # type: ignore[attr-defined]
+            if ctypes.windll.psapi.GetProcessMemoryInfo(  # type: ignore[attr-defined]
+                    h, ctypes.byref(pmc), pmc.cb):
+                return pmc.WorkingSetSize / (1024 * 1024)
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _latest_release_tag() -> str | None:
+    """Latest GitHub release tag, 10s timeout. None on any failure."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest",
+            headers={"User-Agent": "gold-reaper",
+                     "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        return str(data.get("tag_name") or "") or None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # ═════════════════════════════════════════════════════════════════ multi-account
@@ -565,8 +737,23 @@ def main() -> int:
             CONFIG.broker = "PAPER"
     if accounts:
         return _run_account(accounts[0], args)
-    bot = ReaperApexBot(CONFIG)
-    return bot.start()
+
+    # supervisor: the bot NEVER exits unexpectedly. Fatal loop errors log,
+    # sleep 30s, rebuild and keep hunting. SIGINT (Ctrl+C) is respected.
+    supervisor = os.getenv("SUPERVISOR", "1").strip().lower() not in ("0", "false", "no")
+    while True:
+        code = ReaperApexBot(CONFIG).start()
+        if code == 0:                      # clean shutdown or Ctrl+C
+            return 0
+        if not supervisor:
+            return code
+        log.error("supervisor: bot exited code=%s - restarting in 30s", code)
+        try:
+            notify("SUPERVISOR", "bot crashed - restarting in 30s (watchdog + "
+                   "service restarts stay armed)")
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(30)
 
 
 def _spawn_dashboard() -> None:

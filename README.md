@@ -7,7 +7,8 @@
 ### Autonomous XAU/USD trading system · walk-forward validated · dark-terminal ops
 
 [![CI](https://img.shields.io/badge/CI-blood_test-00FF9C?style=flat-square&labelColor=0A0E0F)](https://github.com/muhammadwhizz-web/gold-reaper/actions)
-[![Python](https://img.shields.io/badge/python-3.12-00D9FF?style=flat-square&labelColor=0A0E0F)](https://python.org)
+[![Platforms](https://img.shields.io/badge/platforms-win_%7C_linux_%7C_macos-00D9FF?style=flat-square&labelColor=0A0E0F)](docs/GETTING_STARTED.md)
+[![Python](https://img.shields.io/badge/python-3.10_--_3.12-00D9FF?style=flat-square&labelColor=0A0E0F)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-5A6B6F?style=flat-square&labelColor=0A0E0F)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/muhammadwhizz-web/gold-reaper/main?style=flat-square&labelColor=0A0E0F&color=00FF9C)](https://github.com/muhammadwhizz-web/gold-reaper/commits/main)
 [![Backtest](https://img.shields.io/badge/backtest-walk--forward-FFB000?style=flat-square&labelColor=0A0E0F)](docs/STRATEGY.md)
@@ -113,35 +114,63 @@ max drawdown %               -14.17         -11.97
 
 Reproduce: `python data/ingest_multi_tf.py && python features/build_features.py && python research/backtest_apex.py`
 
-## Installation
+## Installation — one command (or one double-click)
 
-### Linux (systemd autostart)
+Every installer: checks Python (3.10–3.12, installs it if missing) → copies
+the app → creates the venv → installs requirements → runs the **setup
+wizard** (broker, API keys, risk) → creates a **desktop icon: "Gold
+Reaper"** → registers 24/7 autostart with auto-restart + watchdog.
+
+### Linux / Debian / Ubuntu / Fedora / Arch
 
 ```bash
 git clone https://github.com/muhammadwhizz-web/gold-reaper.git
-cd gold-reaper
-chmod +x install_linux.sh && ./install_linux.sh
-cp .env.example .env && nano .env
-systemctl --user start gold-reaper
-tail -f data/reaper.log
+cd gold-reaper && chmod +x install_linux.sh && ./install_linux.sh
 ```
 
-Installs the bot service (boot-persistent, crash-restart 30s), the ops
-dashboard (:8050), and a weekly retrain timer.
+Desktop icon + Applications menu entry, systemd user services
+(`Restart=always`, linger for no-login 24/7), dashboard on :8080,
+weekly retrain timer. Or install the `.deb` from
+[Releases](https://github.com/muhammadwhizz-web/gold-reaper/releases).
 
-### Windows (Task Scheduler autostart)
+### Windows 10 / 11
 
 ```powershell
+# one command (or download GoldReaper-Setup.exe from Releases and double-click)
 git clone https://github.com/muhammadwhizz-web/gold-reaper.git
-cd gold-reaper
-powershell -ExecutionPolicy Bypass -File install_windows.ps1
-notepad .env
-Start-ScheduledTask -TaskName GOLD-REAPER
+cd gold-reaper && powershell -ExecutionPolicy Bypass -File install_windows.ps1
 ```
 
-Registers three boot-persistent tasks: bot, dashboard (:8050), weekly retrain.
+Desktop + Start Menu shortcut, Task Scheduler tasks (logon + boot,
+hidden, restart every 60s), venv under `%LOCALAPPDATA%\GoldReaper`.
+The `.exe` installer (Inno Setup) bundles the same flow with an
+uninstaller in Add/Remove Programs.
 
-Going live later: `BROKER=MT5` (or `BITGET`) + `PAPER_MODE=false` in `.env`.
+### macOS 12+
+
+```bash
+chmod +x install_macos.sh && ./install_macos.sh
+```
+
+`/Applications/Gold Reaper.app` + LaunchAgent (`KeepAlive`) — or drag
+`GoldReaper.dmg` from Releases.
+
+### After any install
+
+```text
+desktop icon  -> double-click "Gold Reaper" (wizard on first run, then
+                 bot + dashboard start and http://localhost:8080 opens)
+no terminal   -> the wizard runs once; everything else is automatic
+watchdog      -> data/heartbeat.json checked every 60s; wedged bot restarts
+failover      -> MT5 -> Bitget -> Paper, exponential backoff, never dies
+reset breakers: python bot.py --reset-breakers
+```
+
+Full non-technical walkthrough: **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** ·
+Errors and fixes: **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**
+
+Going live later: `BROKER=MT5` (or `BITGET`) + `PAPER_MODE=false` in `.env`
+(re-run `python -m setup.wizard` to do it interactively).
 Protocol: **2 weeks paper → 0.01 lots → scale.** Risk contract:
 [docs/RISK.md](docs/RISK.md)
 
@@ -163,7 +192,10 @@ Record your own video: `bash demo/record_demo.sh` →
 - [x] v2 — APEX stack: 10-dimension features, regime router, ensemble,
       block risk engine, audit, alerts, dashboard
 - [x] v2.1 — professional rebrand, demo suite, GitHub Pages
-- [ ] v2.2 — OANDA/IBKR broker adapters, order-flow tick features from the
+- [x] v2.2 — one-click cross-platform installers (desktop icons, setup
+      wizard, watchdog, tray, broker factory + health monitor, Inno Setup
+      `.exe` / `.deb` / `.dmg` release pipeline)
+- [ ] v2.3 — OANDA/IBKR broker adapters, order-flow tick features from the
       Dukascopy layer, per-regime parameter sets
 - [ ] v3 — meta-model OOS gate cleared → hard ML veto arms automatically;
       portfolio mode (XAU + correlated assets)

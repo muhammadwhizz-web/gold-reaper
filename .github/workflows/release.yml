@@ -1,0 +1,87 @@
+name: 📦 Release installers
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build .deb (dpkg-deb)
+        run: |
+          chmod +x installer/build_deb.sh
+          ./installer/build_deb.sh
+      - name: Sanity-check deb
+        run: |
+          dpkg-deb --info installer/output/gold-reaper_*_all.deb | head -30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gold-reaper-deb
+          path: installer/output/gold-reaper_*_all.deb
+
+  build-windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Build GoldReaper-Setup.exe (iscc)
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe" }
+          & $iscc "installer\gold-reaper.iss" /O"installer\output"
+          if ($LASTEXITCODE -ne 0) { throw "iscc failed" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gold-reaper-setup-exe
+          path: installer/output/GoldReaper-Setup-*.exe
+
+  build-macos-dmg:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build GoldReaper.dmg (hdiutil)
+        run: |
+          chmod +x installer/build_dmg.sh
+          ./installer/build_dmg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gold-reaper-dmg
+          path: installer/output/GoldReaper-*.dmg
+
+  release:
+    needs: [build-linux-deb, build-windows-exe, build-macos-dmg]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create GitHub Release with installers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="${GITHUB_REF#refs/tags/}"
+          gh release create "$VER" \
+            --title "GOLD REAPER $VER — one-click installers" \
+            --notes "Autonomous XAU/USD hunter - cross-platform installers.
+
+          **Windows**: GoldReaper-Setup-${VER}.exe (desktop icon + Task Scheduler autostart)
+          **Ubuntu/Debian**: gold-reaper_${VER#v}_all.deb (or one-line: ./install_linux.sh)
+          **macOS**: GoldReaper-${VER}.dmg (drag to Applications)
+
+          PAPER mode is the default. No bot guarantees profit.
+          Full guide: docs/GETTING_STARTED.md" \
+            dist/*/*
+          echo "release $VER published"
