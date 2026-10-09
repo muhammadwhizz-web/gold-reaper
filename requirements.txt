@@ -1,0 +1,8 @@
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.26.0
+ccxt>=4.2.0
+python-dotenv>=1.0.0
+colorama>=0.4.6; sys_platform == "win32"
+# Windows-only MT5 terminal bridge (install on Windows for Exness):
+MetaTrader5>=5.0.45; sys_platform == "win32"

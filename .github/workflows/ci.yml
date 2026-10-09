@@ -1,0 +1,53 @@
+name: 🔥 Reaper CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install arsenal
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Blood test (imports + strategy sanity)
+        run: |
+          python - <<'PY'
+          import sys; sys.path.insert(0, '.')
+          from core.config import CONFIG
+          from core.strategy import ReaperX
+          from core.risk import RiskManager
+          from core.indicators import ema, rsi, atr, adx
+          import pandas as pd, numpy as np
+          # synthetic data sanity: indicators must not explode
+          n = 600
+          rng = np.random.default_rng(666)
+          close = pd.Series(np.cumsum(rng.normal(0, 3, n)) + 2000)
+          df = pd.DataFrame({"open": close.shift(1).fillna(close.iloc[0]),
+                             "high": close + 4, "low": close - 4, "close": close,
+                             "volume": 1000}, index=pd.date_range("2024-01-01", periods=n, freq="1h", utc=True))
+          assert not adx(df).isna().all(), "ADX broken"
+          s = ReaperX()
+          sig = s.evaluate(df, df.resample("4h").agg({"open":"first","high":"max","low":"min","close":"last"}).dropna(), df.index[-1].to_pydatetime())
+          print("strategy pipeline OK | bias:", s.state.bias, "| signal:", bool(sig))
+          rm = RiskManager()
+          assert rm.position_size(2000.0, 1990.0) > 0, "sizing broken"
+          print("risk engine OK | size example:", rm.position_size(2000.0, 1990.0), "oz")
+          PY
+
+      - name: Deploy snake on main
+        if: success()
+        run: echo "reaper is alive"

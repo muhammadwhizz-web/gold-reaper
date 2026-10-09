@@ -1,0 +1,20 @@
+# secrets — never push these
+.env
+*.key
+*_token*
+
+# runtime artifacts
+data/state.json
+data/trades.csv
+data/reaper.log*
+data/history/*.csv
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# os junk
+.DS_Store
+Thumbs.db
+desktop.ini
