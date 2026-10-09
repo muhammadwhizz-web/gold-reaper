@@ -1,6 +1,6 @@
 [project]
 name = "gold-reaper"
-version = "2.2.0"
+version = "2.3.0"
 description = "Autonomous XAU/USD trading system - walk-forward validated - MT5 + Bitget + paper - dark-terminal dashboard"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["asciinema>=2.4.0", "pytest>=8.0.0", "ruff>=0.4.0"]
+dev = ["asciinema>=2.4.0", "pytest>=8.0.0", "ruff>=0.4.0", "mypy>=1.9.0"]
 windows = ["MetaTrader5>=5.0.45", "colorama>=0.4.6"]
 
 [project.urls]
@@ -46,3 +46,11 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = false
+exclude = ["research/", "demo/", "setup/", "dashboard/", "assets/", "ml/"]
+files = ["core", "brokers", "features", "bot.py"]

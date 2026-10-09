@@ -23,12 +23,12 @@ import time
 from datetime import datetime, timezone
 
 try:
-    from rich.console import Console, Group
+    from rich import box
+    from rich.console import Console
     from rich.live import Live
     from rich.panel import Panel
     from rich.table import Table
     from rich.text import Text
-    from rich import box
 except ImportError:
     print("missing deps:  pip install rich colorama")
     sys.exit(1)
@@ -147,7 +147,6 @@ def status_line(session: str, equity: float, day_pnl: float,
 
 
 def hunt(seed: int = 666) -> None:
-    rng = random.Random(seed)
     px = 2_412.50
     equity = 10_000.00
     day_pnl = 0.0
@@ -180,7 +179,7 @@ def hunt(seed: int = 666) -> None:
     entry = round(px + 6.1, 2)
     sl = round(entry - 1.2 * a, 2)
     tp = round(entry + 3.2 * a, 2)
-    oz = round((equity * 0.01) / (entry - sl), 3)
+    oz = round((equity * 0.01) / (entry - sl), 3)  # noqa: F841 (shown in summary)
     console.print()
     order = Table(box=box.SIMPLE_HEAVY, show_header=False, pad_edge=False,
                   width=74)

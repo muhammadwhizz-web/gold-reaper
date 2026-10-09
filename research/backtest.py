@@ -38,7 +38,7 @@ def run_backtest(h1: pd.DataFrame, h4: pd.DataFrame,
                  risk_pct: float = 1.0, verbose: bool = True,
                  cfg: CONFIG.__class__ | None = None) -> dict:
     cfg = cfg or CONFIG
-    strat = ReaperX(cfg)
+    _strat = ReaperX(cfg)  # noqa: F841 (state carrier kept for parity)
     equity = 10_000.0
     start_equity = equity
     trades: list[dict] = []
@@ -151,11 +151,11 @@ def run_backtest(h1: pd.DataFrame, h4: pd.DataFrame,
         if sig_side == "LONG":
             entry = px + SPREAD + SLIPPAGE
             sl = entry - cfg_vec.sl_atr_mult * a
-            tp = entry + cfg_vec.tp_atr_mult * a
+            tp = entry + cfg_vec.tp_r * cfg_vec.sl_atr_mult * a
         else:
             entry = px - SPREAD - SLIPPAGE
             sl = entry + cfg_vec.sl_atr_mult * a
-            tp = entry - cfg_vec.tp_atr_mult * a
+            tp = entry - cfg_vec.tp_r * cfg_vec.sl_atr_mult * a
 
         oz = (equity * risk_pct / 100.0) / abs(entry - sl)
         open_pos = {"side": sig_side, "entry": entry, "sl": sl, "tp": tp,

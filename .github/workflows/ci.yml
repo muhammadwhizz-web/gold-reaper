@@ -23,6 +23,46 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Lint + type gates (ruff + mypy)
+        run: |
+          pip install ruff mypy
+          ruff check .
+          mypy
+
+      - name: Signal diagnosis (offline buckets, quick mode)
+        run: |
+          python - <<'PY'
+          import sys; sys.path.insert(0, '.')
+          from research.diagnose import _bucket, hourly_vol_rank, _VOL_BUCKETS
+          import pandas as pd
+          df = pd.DataFrame([{"entry_ts": pd.Timestamp("2024-06-05 12:00", tz="UTC"),
+                              "pnl": 10.0, "trace": "trend"}])
+          tbl = _bucket(df, lambda ts: ts.hour)
+          assert tbl["n"].sum() == 1
+          assert [b[2] for b in _VOL_BUCKETS] == ["V<20", "V20-40", "V40-60", "V60-80", "V>80"]
+          print("diagnose helpers OK | buckets:", len(tbl))
+          PY
+
+      - name: Visual asset forges (social preview + header svg)
+        run: |
+          python assets/make_social.py --out /tmp/social-check.png
+          python - <<'PY'
+          import xml.etree.ElementTree as ET, pathlib
+          root = ET.parse("assets/header.svg").getroot()
+          assert root.get("viewBox") == "0 0 1200 300"
+          sp = pathlib.Path("assets/social-preview.png")
+          from PIL import Image
+          im = Image.open(sp); assert im.size == (1280, 640), im.size
+          print("header.svg valid | social-preview 1280x640 OK")
+          PY
+
+      - name: Demo artifacts present (cast + gif + mp4)
+        run: |
+          for f in demo/gold-reaper-demo.cast demo/gold-reaper-demo.gif demo/gold-reaper-demo.mp4; do
+            test -s "$f" || { echo "missing $f"; exit 1; }
+          done
+          echo "demo artifacts OK"
+
       - name: Blood test (imports + strategy + risk + regime + ensemble)
         run: |
           python - <<'PY'

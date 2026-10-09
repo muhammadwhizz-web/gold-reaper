@@ -48,3 +48,14 @@ blocks or gradients.
 | `GOLD//REAPER` | "WE ARE THE PYTHON HUNTERS" |
 | amber/red for risk states | blood-red everything |
 | mock-data demos, zero keys | screenshots of fake profits |
+
+## v2.3 asset forges
+
+- `assets/make_social.py` → `assets/social-preview.png` (1280×640, seeded
+  matrix rain, box frame, status strip) — upload once in repo Settings →
+  Social preview
+- `assets/header.svg` → README masthead: typed GOLD//REAPER reveal, blinking
+  cursor, pulsing HUNTING LED (CSS-in-SVG, GitHub-safe)
+- `assets/make_icon.py` → icon.png/.ico/.icns/favicon
+- `demo/render_gif.py` → deterministic cast→GIF with outro card
+- dark badges: `style=for-the-badge&labelColor=0A0E0F&color=00FF9C`

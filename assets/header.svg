@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="GOLD//REAPER — autonomous xau/usd trading system">
+  <defs>
+    <style>
+      .mono { font-family: 'JetBrains Mono','DejaVu Sans Mono','Fira Mono',Menlo,Consolas,monospace; }
+      .bg   { fill: #0A0E0F; }
+      .frm  { fill: none; stroke: #00FF9C; stroke-width: 2; }
+      .tit  { fill: #00FF9C; font-size: 76px; font-weight: 700; letter-spacing: 6px; }
+      .cur  { fill: #00FF9C; }
+      .sub  { fill: #8FA39B; font-size: 22px; letter-spacing: 2px; }
+      .st   { fill: #00FF9C; font-size: 19px; }
+      .dim  { fill: #5E6A66; font-size: 15px; }
+      .l    { opacity: 0; animation: type .01s steps(1) forwards; }
+      @keyframes type { to { opacity: 1; } }
+      .blink { animation: bl 1.05s steps(1) infinite; }
+      @keyframes bl { 50% { opacity: 0; } }
+      .rain { fill: #00FF9C; opacity: 0.10; }
+    </style>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A0E0F" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0A0E0F" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+
+  <rect class="bg" width="1200" height="300"/>
+  <!-- faint matrix columns -->
+  <g class="mono rain" font-size="16">
+    <text x="80"  y="30">ｲｴｳｱｵｋ</text><text x="80"  y="80">ｷｸｹ</text>
+    <text x="230" y="52">ﾓﾔﾗｾ</text><text x="230" y="150">ﾈﾅﾆ</text>
+    <text x="380" y="26">ﾊﾋﾌﾍ</text><text x="380" y="120">ﾎﾏ</text>
+    <text x="820" y="34">ﾐﾑﾒ</text><text x="970" y="58">ﾕﾖﾗﾘ</text>
+    <text x="1040" y="140">ﾜﾝｦ</text><text x="1120" y="26">ｱｲｳｴｵ</text>
+    <text x="640" y="20">ｶｷｸｹｺ</text><text x="700" y="160">ｻｼｽ</text>
+  </g>
+
+  <!-- thin frame with corner ticks -->
+  <rect class="frm" x="24" y="24" width="1152" height="252"/>
+  <path d="M24 52 V24 H52 M1148 24 H1176 V52 M1176 248 V276 H1148 M52 276 H24 V248"
+        fill="none" stroke="#00FF9C" stroke-width="4"/>
+  <text class="mono" x="40" y="48" fill="#00FF9C" font-size="15">reaper@xauusd:~$ ./hunt --live</text>
+
+  <!-- typed title: each letter fades in sequence (SMIL-free CSS steps) -->
+  <g class="mono tit">
+    <text class="l" style="animation-delay:.00s" x="330" y="150">G</text>
+    <text class="l" style="animation-delay:.10s" x="394" y="150">O</text>
+    <text class="l" style="animation-delay:.20s" x="458" y="150">L</text>
+    <text class="l" style="animation-delay:.30s" x="522" y="150">D</text>
+    <text class="l" style="animation-delay:.40s" x="586" y="150">/</text>
+    <text class="l" style="animation-delay:.50s" x="650" y="150">/</text>
+    <text class="l" style="animation-delay:.60s" x="714" y="150">R</text>
+    <text class="l" style="animation-delay:.70s" x="778" y="150">E</text>
+    <text class="l" style="animation-delay:.80s" x="842" y="150">A</text>
+    <text class="l" style="animation-delay:.90s" x="906" y="150">P</text>
+    <text class="l" style="animation-delay:1.0s" x="970" y="150">E</text>
+    <text class="l" style="animation-delay:1.1s" x="1034" y="150">R</text>
+    <!-- blinking block cursor -->
+    <rect class="cur blink" x="1098" y="92" width="34" height="62"/>
+  </g>
+
+  <text class="mono sub" x="330" y="192">autonomous xau/usd trading system</text>
+
+  <!-- status strip -->
+  <g class="mono st">
+    <rect x="330" y="210" width="540" height="34" rx="7" fill="none" stroke="#005A3C"/>
+    <circle cx="352" cy="227" r="5" fill="#00FF9C">
+      <animate attributeName="opacity" values="1;0.25;1" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <text x="368" y="234">HUNTING · overlap 12–14 UTC · paper-first</text>
+  </g>
+
+  <text class="mono dim" x="330" y="266">walk-forward validated · 142 features · 10 dimensions · losses published, not hidden</text>
+
+  <rect width="1200" height="300" fill="url(#fade)" opacity="0"/>
+</svg>

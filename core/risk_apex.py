@@ -24,8 +24,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
 from core.audit import log_risk
-from core.config import CONFIG
-from core.logger import cprint, RED, YELLOW
+from core.config import CONFIG, Config
+from core.logger import RED, YELLOW, cprint
 
 RISK_FILE = CONFIG.state_file.parent / "apex_risk.json"
 BREAKER_FILE = CONFIG.state_file.parent / "breakers.json"
@@ -92,7 +92,7 @@ class ApexRiskState:
 
 
 class ApexRisk:
-    def __init__(self, cfg: CONFIG.__class__ | None = None) -> None:
+    def __init__(self, cfg: Config | None = None) -> None:
         self.cfg = cfg or CONFIG
         self.state = ApexRiskState()
         self._redis = self._connect_redis()
@@ -202,7 +202,6 @@ class ApexRisk:
 
     # ------------------------------------------------------------- rolling PF
     def rolling_pf(self, trades_csv=None, window_days: int = 30) -> float | None:
-        path = trades_csv or self.cfg.trades_file
         # journal rows carry realized pnl in closes; approximate via state file
         # when the journal lacks pnl (entries only). Uses audit ledger.
         try:

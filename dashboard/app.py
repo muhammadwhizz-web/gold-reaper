@@ -25,7 +25,8 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,7 +37,30 @@ DATA = ROOT / "data"
 
 app = FastAPI(title="GOLD//REAPER", docs_url=None, redoc_url=None)
 
+# vendored JS for the console UI (chart.umd.min.js) — no API contract change
+app.mount("/vendor", StaticFiles(directory=STATIC / "vendor"), name="vendor")
+
 MOCK_SEED = 666
+
+DIMENSIONS = ["trend", "order-flow", "volatility", "structure",
+              "statistical", "session", "microstructure", "cross-asset",
+              "news", "regime"]
+
+
+def _dims_mock(active_frac: float = 0.8) -> list[dict]:
+    rng = random.Random(MOCK_SEED)
+    return [{"name": name,
+             "value": round(rng.uniform(0.25, 0.95), 2),
+             "active": rng.random() < active_frac}
+            for name in DIMENSIONS]
+
+
+def _brokers_mock() -> list[dict]:
+    return [
+        {"name": "MT5 (Exness)", "state": "standby", "latency_ms": None},
+        {"name": "Bitget", "state": "standby", "latency_ms": None},
+        {"name": "Paper", "state": "up", "latency_ms": 1},
+    ]
 
 
 # ─────────────────────────────────────────────────────────── data providers
@@ -56,7 +80,6 @@ def state_payload() -> dict:
     if risk_file.exists():
         try:
             risk = json.loads(risk_file.read_text())
-            hist_file = DATA / "store"  # no stored equity history yet -> mock tail
             return {
                 "mode": "live",
                 "ts": datetime.now(timezone.utc).isoformat(),
@@ -74,11 +97,16 @@ def state_payload() -> dict:
                 "equity_history": _equity_history_mock(),
                 "position": None,
                 "session": "london/ny overlap",
-                "regime": "TREND_UP",
+                "regime": {"name": "TREND_UP", "confidence": 0.71,
+                           "engine": "rules"},
+                "dims": _dims_mock(),
+                "brokers": _brokers_mock(),
+                "streak": max(0, risk.get("wins", 0) - risk.get("losses", 0)),
+                "hunt_window": "12-14 UTC",
+                "geometry": "SL 1.2xATR · TP 2.0R · risk 1%",
             }
         except Exception:  # noqa: BLE001
             pass
-    rng = random.Random(MOCK_SEED)
     eq_hist = _equity_history_mock()
     day_pnl = round(eq_hist[-1] - 10_000.0, 2)
     return {
@@ -102,7 +130,12 @@ def state_payload() -> dict:
             "opened": "12:04:33 UTC", "be": True,
         },
         "session": "london/ny overlap",
-        "regime": "TREND_UP",
+        "regime": {"name": "TREND_UP", "confidence": 0.71, "engine": "rules"},
+        "dims": _dims_mock(),
+        "brokers": _brokers_mock(),
+        "streak": 1,
+        "hunt_window": "12-14 UTC",
+        "geometry": "SL 1.2xATR · TP 2.0R · risk 1%",
     }
 
 
@@ -156,6 +189,11 @@ def log_lines_mock(n: int = 14) -> list[str]:
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return (STATIC / "index.html").read_text()
+
+
+@app.get("/favicon.ico")
+def favicon() -> FileResponse:
+    return FileResponse(ROOT / "assets" / "icon.png", media_type="image/png")
 
 
 @app.get("/api/state")

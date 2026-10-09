@@ -18,13 +18,13 @@ confidence, and a full reasoning trace (audited by core/audit.py).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
 
-from core.config import CONFIG
+from core.config import CONFIG, Config
 from core.news_brain import NewsState
 from core.regime import RegimeState
 from core.sessions import in_blackout, session_of
@@ -71,7 +71,7 @@ class ApexSignal:
 class ApexX:
     name = "APEX-X"
 
-    def __init__(self, cfg: CONFIG.__class__ | None = None,
+    def __init__(self, cfg: Config | None = None,
                  ml_auc: float | None = None) -> None:
         self.cfg = cfg or CONFIG
         self.reaper = ReaperX(self.cfg)
@@ -91,24 +91,30 @@ class ApexX:
         rsi_v = row.get("f_rsi_14")
         z = row.get("f_zscore_100")
         close = row.get("close")
-        if any(v is None or (isinstance(v, float) and np.isnan(v))
+        ts_v = row.get("ts")
+        if any(v is None or not isinstance(v, (int, float)) or np.isnan(v)
                for v in (bb_pos, rsi_v, z, close)):
             return None
+        if ts_v is None:
+            return None
+        assert isinstance(bb_pos, float) and isinstance(rsi_v, float)
+        assert isinstance(z, float) and isinstance(close, float)
         if bb_pos <= 0.05 and rsi_v < 30 and z < -1.5:
             entry = float(close)
             sl = entry - c.sl_atr_mult * atr_v
             return Signal("LONG", entry, sl, entry + (entry - sl), atr_v,
                           f"meanrev: bb_pos {bb_pos:.2f} rsi {rsi_v:.0f} z {z:.1f}",
-                          "RANGE", row.get("ts"), rsi_v)
+                          "RANGE", ts_v, float(rsi_v))
         if bb_pos >= 0.95 and rsi_v > 70 and z > 1.5:
             entry = float(close)
             sl = entry + c.sl_atr_mult * atr_v
             return Signal("SHORT", entry, sl, entry - (sl - entry), atr_v,
                           f"meanrev: bb_pos {bb_pos:.2f} rsi {rsi_v:.0f} z {z:.1f}",
-                          "RANGE", row.get("ts"), rsi_v)
+                          "RANGE", ts_v, float(rsi_v))
         return None
 
-    def _breakout(self, row: dict, atr_v: float, recent_range: float) -> Signal | None:
+    def _breakout(self, row: dict, atr_v: float,
+                  recent_range: float | None) -> Signal | None:
         close = row.get("close")
         brk_up = row.get("f_donch_break_up")
         brk_dn = row.get("f_donch_break_dn")
@@ -122,6 +128,8 @@ class ApexX:
         if not (flow_ok and vol_ok and rng_ok):
             return None
         ts = row.get("ts")
+        if ts is None:
+            return None
         if brk_up == 1 and (ofi or 0) > 0:
             entry = float(close)
             sl = entry - self.cfg.sl_atr_mult * atr_v
@@ -150,6 +158,8 @@ class ApexX:
         if close is None:
             return None
         ts = row.get("ts")
+        if ts is None:
+            return None
         entry = float(close)
         side = "LONG" if news.sentiment > 0 else "SHORT"
         if side == "LONG":
@@ -174,12 +184,17 @@ class ApexX:
             return None
         if regime.regime == "CRISIS":
             return None                       # nobody hunts in a storm
+        # v2.3 hardened hunt window (walk-forward: hours 14-15 UTC bleed)
+        if c.entry_hours_utc and ts.hour not in c.entry_hours_utc:
+            return None
 
         # last-bar context
         row = dict(feat_row or {})
         row["ts"] = ts
         row["close"] = float(h1["close"].iloc[-1])
-        atr_v = float(row.get("f_atr_14_norm", 0) or 0) * row["close"]
+        a_norm_v = row.get("f_atr_14_norm", 0)
+        atr_v = (float(a_norm_v) if isinstance(a_norm_v, (int, float))
+                 else 0.0) * float(row["close"])
         if atr_v <= 0:
             from core.indicators import atr as atr_fn
             atr_v = float(atr_fn(h1, 14).iloc[-1])
@@ -206,15 +221,19 @@ class ApexX:
             else:
                 trace.append("trend: silent (no clean pullback)")
 
-        # 2. mean-reversion module
+        # 2. mean-reversion module (v2.3: only in low-vol tape, rank < ceiling)
         if regime.regime == "RANGE":
-            sig = self._meanrev(row, atr_v)
+            vol_rank = self._vol_rank(h1)
+            vr_ok = (c.meanrev_vol_max is None or
+                     (vol_rank is not None and vol_rank < c.meanrev_vol_max))
+            sig = self._meanrev(row, atr_v) if vr_ok else None
             if sig is not None:
                 votes["meanrev"] = sig.side
                 signals["meanrev"] = sig
                 trace.append(sig.reason)
             else:
-                trace.append("meanrev: bands calm")
+                trace.append("meanrev: bands calm" if vr_ok else
+                             f"meanrev: vol gate (rank {vol_rank if vol_rank is not None else 'NA'})")
 
         # 3. breakout module
         if regime.regime == "VOLATILE_CHOP":
@@ -279,11 +298,11 @@ class ApexX:
         entry = base.entry
         sl = base.sl
         r_dist = abs(entry - sl)
-        # TP ladder aligned with walk-forward-locked geometry (TP = 3.2 x ATR = 2.67R)
+        # TP ladder aligned with walk-forward-locked geometry (v2.3: TP = 2.0R)
         if dominant == "LONG":
-            tp1, tp2, tp3 = entry + r_dist, entry + 2.667 * r_dist, entry + 4.0 * r_dist
+            tp1, tp2, tp3 = entry + r_dist, entry + c.tp_r * r_dist, entry + 4.0 * r_dist
         else:
-            tp1, tp2, tp3 = entry - r_dist, entry - 2.667 * r_dist, entry - 4.0 * r_dist
+            tp1, tp2, tp3 = entry - r_dist, entry - c.tp_r * r_dist, entry - 4.0 * r_dist
 
         conf = min(1.0, 0.35 + 0.15 * agree + (0.2 if ml_prob and
                                                  ((dominant == "LONG" and ml_prob >= 0.55) or
@@ -296,3 +315,15 @@ class ApexX:
 
     _last_trace: list[str] = []
     _last_votes: dict[str, str] = {}
+
+    @staticmethod
+    def _vol_rank(h1: pd.DataFrame) -> float | None:
+        """ATR-percentile of the last closed bar (0..1), matching the backtest
+        engine's vol definition (rolling 500-bar rank of normalized ATR)."""
+        try:
+            from core.indicators import atr as atr_fn
+            a = atr_fn(h1, 14) / h1["close"]
+            v = a.rolling(500, min_periods=100).rank(pct=True).iloc[-1]
+            return None if pd.isna(v) else float(v)
+        except Exception:  # noqa: BLE001
+            return None

@@ -18,7 +18,7 @@ import json
 import os
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -82,7 +82,7 @@ class NewsBrain:
         self.store = store
         self.cfg = cfg
         self._calendar: pd.DataFrame | None = None
-        self._loaded_at = None
+        self._loaded_at: datetime | None = None
 
     # ------------------------------------------------------------ calendar
     def _load_calendar(self, max_age_min: int = 30) -> pd.DataFrame | None:

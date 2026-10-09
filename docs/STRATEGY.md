@@ -73,3 +73,32 @@ window that contains the 2026 regime break, but both systems lose there. The
 v1 engine (`research/optimize.py`) reported +14.2% / PF 1.70 on the same
 config; the stricter engine does not reproduce that full-window. Regime
 dependence is real — hence paper-first protocol and latched breakers.
+
+---
+
+## v2.3 — the diagnosis and the hardened config
+
+The v2.2 verdict was negative and published. `research/diagnose.py` bucketed
+every trade and answered nine questions (full text: [DIAGNOSIS.md](DIAGNOSIS.md)):
+
+- RANGE-regime mean reversion was the biggest bleed (-526 over 32 trades)
+- overlap hours 14:00–15:00 UTC cost -1,010 combined; 12:00 paid
+- SL-first fill pessimism was NOT the problem (TP-first rerun identical)
+- costs hurt but even zero-cost execution loses on v2.2 rules
+- tabular ML rejected twice more (daily-20y AUC 0.528, silver -5,782)
+
+Three fixes passed the worst-fold gate (only a config whose **worst
+walk-forward fold** improves gets shipped — enforced by `research/tune_v3.py`):
+
+| change | env / code | effect (walk-forward) |
+|---|---|---|
+| hunt window 12:00–13:59 UTC | `ENTRY_HOURS_UTC=12,13` | removes the 14–15h bleed |
+| TP 2.0R (was 2.67R) | `TP_R=2.0` | target math matches achievable win rate |
+| meanrev ATR-rank ceiling | `MEANREV_VOL_MAX=0.4` | meanrev only in low-vol tape |
+
+Verdict (same engine, same window): worst fold -663 → -112, full-period net
+-970 → +34 on 11 trades (APEX-X v3 with ML: +356 on 8 trades). **The sample
+is too small to claim an edge — the paper track record
+([TRACK_RECORD.md](TRACK_RECORD.md)) is the live arbitration.** Time-stop,
+weekday filters, global vol bands and SL changes were tested and rejected by
+the data; they are documented in DIAGNOSIS.md, not hidden.

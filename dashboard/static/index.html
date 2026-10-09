@@ -3,270 +3,897 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="GOLD//REAPER ops console — live trading telemetry for the XAU/USD bot.">
 <title>GOLD//REAPER — ops console</title>
+<link rel="icon" type="image/png" href="/favicon.ico">
+<script src="vendor/chart.umd.min.js"></script>
 <style>
-  :root {
-    --bg:#0A0E0F; --panel:#0D1214; --line:#1B2327;
-    --green:#00FF9C; --cyan:#00D9FF; --amber:#FFB000; --red:#FF3B3B;
-    --muted:#5A6B6F; --text:#C9D1D9;
-    --mono:'JetBrains Mono','IBM Plex Mono','Fira Code',ui-monospace,Consolas,monospace;
-  }
-  * { box-sizing:border-box; }
-  html,body { height:100%; }
-  body {
-    background:var(--bg); color:var(--text); font-family:var(--mono);
-    margin:0; padding:24px; font-size:14px; overflow-x:hidden;
-  }
-  #rain { position:fixed; inset:0; z-index:0; opacity:.10; pointer-events:none; }
-  .wrap { position:relative; z-index:1; max-width:1180px; margin:0 auto; }
+/* ─────────────────────────────────────────────── palette / base ── */
+:root {
+  --bg:      #0A0E0F;
+  --panel:   #0E1517;
+  --line:    #1A2422;
+  --green:   #00FF9C;
+  --cyan:    #00D9FF;
+  --amber:   #FFBF00;
+  --red:     #FF5555;
+  --dim:     #5E6A66;
+  --text:    #C9D1D9;
+  --hover:   #101B18;
+  --mono:    'JetBrains Mono','DejaVu Sans Mono','Fira Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 16px 18px 22px;
+  overflow-x: hidden;
+}
+[hidden] { display: none !important; }
+a { color: var(--cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 1px solid var(--green); outline-offset: 2px; }
+::selection { background: rgba(0,255,156,0.25); }
 
-  .frame { border:1px solid var(--green); position:relative; padding:20px 22px;
-           background:rgba(13,18,20,.82); margin-bottom:18px; }
-  .frame::before, .frame::after, .frame .c3, .frame .c4 {
-    content:""; position:absolute; width:14px; height:14px; }
-  .frame::before { top:-1px; left:-1px; border-top:2px solid var(--green);
-                   border-left:2px solid var(--green); }
-  .frame::after  { top:-1px; right:-1px; border-top:2px solid var(--green);
-                   border-right:2px solid var(--green); }
-  .c3 { bottom:-1px; left:-1px; border-bottom:2px solid var(--green);
-        border-left:2px solid var(--green); }
-  .c4 { bottom:-1px; right:-1px; border-bottom:2px solid var(--green);
-        border-right:2px solid var(--green); }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 
-  header h1 { margin:0; font-size:26px; letter-spacing:3px; color:var(--green);
-              font-weight:700; }
-  header .sub { color:var(--muted); margin-top:4px; }
-  .led { display:inline-block; width:9px; height:9px; border-radius:50%;
-         margin-right:6px; vertical-align:middle; }
-  .led.g { background:var(--green); box-shadow:0 0 8px var(--green);
-           animation:pulse 2.2s infinite; }
-  .led.a { background:var(--amber); box-shadow:0 0 8px var(--amber); }
-  .led.r { background:var(--red); box-shadow:0 0 8px var(--red); }
-  @keyframes pulse { 0%,100% {opacity:1} 50% {opacity:.55} }
+/* ─────────────────────────────────────────────── matrix rain ── */
+#rain {
+  position: fixed; inset: 0; z-index: 0;
+  opacity: 0.07; pointer-events: none; display: none;
+}
 
-  .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:16px; }
-  .col4 { grid-column:span 4; } .col6 { grid-column:span 6; }
-  .col8 { grid-column:span 8; } .col12 { grid-column:span 12; }
-  @media (max-width:900px){ .col4,.col6,.col8 { grid-column:span 12; } }
+/* ─────────────────────────────────────────────── banner strips ── */
+#banner {
+  position: relative; z-index: 2;
+  text-align: center; padding: 5px 10px; margin: -16px -18px 14px;
+  font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+}
+#banner.red   { background: var(--red);   color: #0A0E0F; }
+#banner.amber { background: var(--amber); color: #0A0E0F; }
 
-  h2 { font-size:11px; letter-spacing:2px; color:var(--muted); margin:0 0 10px;
-       text-transform:uppercase; }
-  .big { font-size:26px; font-weight:700; }
-  .g { color:var(--green); } .c { color:var(--cyan); } .a { color:var(--amber); }
-  .r { color:var(--red); } .m { color:var(--muted); }
-  table { width:100%; border-collapse:collapse; font-size:12.5px; }
-  th,td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); }
-  th { color:var(--muted); font-weight:400; }
-  tr:hover td { background:#101a17; }
+/* ─────────────────────────────────────────────── top bar ── */
+.wrap { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; }
+#topbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  padding: 8px 0 12px; border-bottom: 1px solid var(--line); margin-bottom: 8px;
+}
+.wm {
+  color: var(--green); font-size: 17px; font-weight: 700;
+  letter-spacing: 2.5px; margin-right: 4px; white-space: nowrap;
+}
+.wm .sl { color: var(--dim); }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; letter-spacing: 1.5px; padding: 3px 8px;
+  border: 1px solid var(--line); color: var(--dim); white-space: nowrap;
+}
+.badge.live { color: var(--green); border-color: rgba(0,255,156,0.45); }
+#demoBadge { display: none; color: var(--amber); border-color: rgba(255,191,0,0.5); }
+body.demo #demoBadge { display: inline-flex; }
+#offline { display: none; align-items: center; gap: 5px; font-size: 10px; color: var(--red); letter-spacing: 1px; }
+#offline.on { display: inline-flex; }
+#clock { color: var(--dim); font-size: 12px; letter-spacing: 1px; margin-left: auto; white-space: nowrap; }
+.chip {
+  font-size: 10px; letter-spacing: 1px; color: var(--dim);
+  border: 1px solid var(--line); padding: 3px 8px; white-space: nowrap;
+}
+.chip b { color: var(--cyan); font-weight: 400; }
+button {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+  background: transparent; color: var(--dim);
+  border: 1px solid var(--line); padding: 5px 12px; cursor: pointer;
+}
+button:hover { color: var(--green); border-color: rgba(0,255,156,0.45); }
+button[aria-pressed="true"] { color: var(--green); border-color: rgba(0,255,156,0.55); }
+body.demo .chip, body.demo #rainToggle { display: none; }
 
-  #log { height:220px; overflow-y:auto; font-size:12.5px; line-height:1.55;
-         white-space:pre-wrap; margin:0; }
-  #log::-webkit-scrollbar { width:6px; }
-  #log::-webkit-scrollbar-thumb { background:var(--line); }
-  .cursor::after { content:"▊"; color:var(--green); animation:blink 1.1s steps(1) infinite; }
-  @keyframes blink { 50% {opacity:0} }
+.mockhint {
+  font-size: 11px; color: var(--dim); letter-spacing: 0.5px;
+  padding: 6px 0 10px;
+}
+.mockhint::before { content: "· "; color: var(--amber); }
 
-  svg.chart text { fill:var(--muted); font-family:var(--mono); font-size:10px; }
-  .badge { font-size:11px; border:1px solid var(--line); padding:2px 8px;
-           border-radius:3px; color:var(--muted); margin-left:8px; }
+/* ─────────────────────────────────────────────── grid / panels ── */
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; margin-top: 10px; }
+.s4  { grid-column: span 4; }
+.s8  { grid-column: span 8; }
+@media (max-width: 1099px) {
+  .s8 { grid-column: span 12; }
+  .s4 { grid-column: span 6; }
+}
+@media (max-width: 719px) {
+  .s4, .s8 { grid-column: span 12; }
+}
+
+.panel {
+  position: relative;
+  background: rgba(14,21,23,0.86);
+  border: 1px solid var(--line);
+  padding: 13px 15px 15px;
+  min-width: 0;
+}
+.panel::before, .panel::after {
+  content: ""; position: absolute; width: 9px; height: 9px; pointer-events: none;
+}
+.panel::before { top: -1px; left: -1px; border-top: 1px solid var(--green); border-left: 1px solid var(--green); }
+.panel::after  { bottom: -1px; right: -1px; border-bottom: 1px solid var(--green); border-right: 1px solid var(--green); }
+.panel > h2 {
+  margin: 0 0 10px; font-size: 10px; font-weight: 400; letter-spacing: 2.5px;
+  text-transform: uppercase; color: var(--dim);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.panel > h2 .hval { color: var(--green); letter-spacing: 0.5px; }
+.dim { color: var(--dim); }
+.big { font-size: 24px; font-weight: 700; letter-spacing: 1px; }
+.g { color: var(--green); } .c { color: var(--cyan); }
+.a { color: var(--amber); } .r { color: var(--red); }
+
+/* LEDs */
+.led {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  flex: none; vertical-align: middle;
+}
+.led-up       { background: var(--green); box-shadow: 0 0 7px var(--green); }
+.led-degraded { background: var(--amber); box-shadow: 0 0 7px var(--amber); }
+.led-down     { background: var(--red);   box-shadow: 0 0 7px var(--red); }
+.led-standby  { background: #3A4744; }
+.pulse { animation: pulse 2.2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* ─────────────────────────────────────────────── equity panel ── */
+.chartbox { position: relative; width: 100%; height: 300px; }
+#eqStats {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px;
+  padding-top: 9px; border-top: 1px solid var(--line);
+  font-size: 11px; color: var(--dim); letter-spacing: 0.5px;
+}
+#eqStats b { font-weight: 400; margin-left: 5px; }
+body.demo #eqBody { height: 420px; }
+
+/* ─────────────────────────────────────────────── regime panel ── */
+.regname {
+  font-size: 25px; font-weight: 700; letter-spacing: 2px;
+  color: var(--green); text-transform: uppercase; margin: 2px 0 12px;
+}
+.confbar { height: 3px; background: var(--line); margin-bottom: 7px; }
+.confbar i { display: block; height: 100%; background: var(--green); width: 0; transition: width 0.5s; }
+.regmeta { display: flex; justify-content: space-between; font-size: 11px; color: var(--dim); }
+.regmeta .enginetag { border: 1px solid var(--line); padding: 1px 6px; }
+.regrow { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; }
+.regrow .lab { color: var(--dim); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; display: block; }
+.regrow .val { color: var(--cyan); }
+
+/* ─────────────────────────────────────────────── position panel ── */
+.posflat { display: flex; align-items: center; gap: 9px; color: var(--dim); padding: 26px 0 40px; }
+.poshead { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.sidebadge {
+  font-size: 11px; letter-spacing: 2px; padding: 2px 9px; font-weight: 700;
+}
+.sidebadge.long  { color: var(--green); border: 1px solid var(--green); }
+.sidebadge.short { color: var(--red);   border: 1px solid var(--red); }
+.bechip {
+  font-size: 10px; letter-spacing: 1.5px; color: var(--cyan);
+  border: 1px solid rgba(0,217,255,0.5); padding: 1px 7px;
+}
+.posstats { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; margin-top: 9px; }
+.posstats .k { color: var(--dim); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; display: block; }
+.posstats .v { color: var(--text); }
+/* horizontal price band: SL / entry / TP markers */
+.band { position: relative; height: 30px; background: #0B1113; border: 1px solid var(--line); margin: 30px 6px 42px; }
+.mk { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; }
+.mk.sl    { background: var(--red); }
+.mk.entry { background: var(--cyan); }
+.mk.tp    { background: var(--green); }
+.mk .mklab {
+  position: absolute; top: 100%; margin-top: 5px; transform: translateX(-50%);
+  font-size: 10px; white-space: nowrap; color: var(--dim); letter-spacing: 0.5px;
+}
+.mk.r1 .mklab { margin-top: 5px; }
+.mk.r2 .mklab { margin-top: 21px; }
+.mk.sl .mklab    { color: var(--red); }
+.mk.entry .mklab { color: var(--cyan); }
+.mk.tp .mklab    { color: var(--green); }
+
+/* ─────────────────────────────────────────────── gauges panel ── */
+#gaugeRow { display: flex; flex-wrap: wrap; gap: 8px; }
+.gauge { flex: 1 1 140px; min-width: 130px; text-align: center; }
+.gauge svg { width: 100%; max-width: 200px; height: auto; display: block; margin: 0 auto; }
+.gtrack { stroke: var(--line); stroke-width: 10; fill: none; }
+.gfill  { stroke-width: 10; fill: none; }
+.gval   { font-family: var(--mono); font-size: 19px; font-weight: 700; }
+.gsub   { font-family: var(--mono); font-size: 9px; fill: var(--dim); letter-spacing: 1px; }
+.glabel { margin-top: 2px; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); }
+
+/* ─────────────────────────────────────────────── radar panel ── */
+.chartbox-radar { position: relative; width: 100%; height: 250px; }
+
+/* ─────────────────────────────────────────────── trades panel ── */
+.scroll { overflow: auto; }
+.scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+.scroll::-webkit-scrollbar-thumb { background: #1A2422; border-radius: 3px; }
+.scroll::-webkit-scrollbar-thumb:hover { background: #2A3835; }
+.tscroll { max-height: 288px; }
+table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 12px; }
+th, td { text-align: left; padding: 5px 9px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--dim); font-weight: 400; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; padding: 0; border-bottom: 1px solid var(--line); }
+th button {
+  display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 6px;
+  border: 0; padding: 7px 9px; font-size: 10px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--dim); background: none; cursor: pointer;
+}
+th button:hover, th[aria-sort] button { color: var(--green); }
+.caret { font-size: 8px; color: var(--green); }
+tbody tr:hover td { background: var(--hover); }
+td.pnl.pos { color: var(--green); }
+td.pnl.neg { color: var(--red); }
+td.pnl.zero { color: var(--dim); }
+td.s-long  { color: var(--green); }
+td.s-short { color: var(--red); }
+td.dim, .dim td { color: var(--dim); }
+
+/* ─────────────────────────────────────────────── right stack ── */
+.rstack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.brow { display: flex; align-items: center; gap: 9px; padding: 5px 0; font-size: 12px; }
+.brow + .brow { border-top: 1px solid var(--line); }
+.bname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.blat { color: var(--dim); font-size: 11px; }
+#streakNum { color: var(--green); }
+#streakNum.zero { color: var(--dim); }
+#streakNum.neg  { color: var(--red); }
+.streaksub { font-size: 11px; color: var(--dim); margin-top: 3px; letter-spacing: 0.5px; }
+
+/* ─────────────────────────────────────────────── log tail ── */
+.logbox { height: 196px; font-size: 11.5px; padding-right: 4px; }
+.ln { white-space: pre-wrap; word-break: break-word; padding: 1px 0; }
+.lt { color: var(--dim); margin-right: 8px; }
+.lm { color: var(--text); }
+.cur { color: var(--green); animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ─────────────────────────────────────────────── footer ── */
+#footer {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px;
+  font-size: 11px; color: var(--dim); letter-spacing: 0.5px;
+}
+#footer .github { margin-left: auto; }
+.khint { display: inline-flex; gap: 4px; }
+kbd {
+  font-family: var(--mono); font-size: 10px; color: var(--dim);
+  border: 1px solid var(--line); padding: 1px 6px;
+}
+body.demo #footer { display: none; }
+
+/* ─────────────────────────────────────────────── standby overlay ── */
+#standby {
+  display: none; position: fixed; inset: 0; z-index: 60;
+  background: rgba(10,14,15,0.9);
+  align-items: center; justify-content: center;
+}
+body.standby #standby { display: flex; }
+.sbpanel {
+  border: 1px solid var(--amber); padding: 30px 46px; text-align: center;
+  background: rgba(14,21,23,0.95);
+}
+.sbpanel .sbt { color: var(--amber); font-size: 19px; font-weight: 700; letter-spacing: 3px; }
+.sbpanel .sbs { color: var(--dim); font-size: 11px; margin-top: 9px; letter-spacing: 1px; }
+
+/* ─────────────────────────────────────────────── responsive ── */
+@media (max-width: 719px) {
+  body { padding: 12px 12px 18px; font-size: 12.5px; }
+  #banner { margin: -12px -12px 12px; }
+  .wm { font-size: 15px; }
+  #clock { margin-left: 0; width: 100%; order: 5; }
+  .chartbox { height: 220px; }
+  body.demo #eqBody { height: 320px; }
+  .chartbox-radar { height: 240px; }
+  .logbox { height: 170px; }
+  button, th button { min-height: 44px; }
+  .regname { font-size: 22px; }
+  .band { margin-left: 2px; margin-right: 2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
 </style>
 </head>
 <body>
-<canvas id="rain"></canvas>
+
+<canvas id="rain" aria-hidden="true"></canvas>
+
+<div id="banner" hidden></div>
+
 <div class="wrap">
 
-  <div class="frame">
-    <span class="c3"></span><span class="c4"></span>
-    <header>
-      <h1>GOLD//REAPER</h1>
-      <div class="sub">autonomous XAU/USD trading system
-        <span class="badge" id="mode">connecting…</span>
-        <span class="badge" id="regime">regime —</span>
+  <!-- ── top bar ── -->
+  <header id="topbar">
+    <span class="wm">GOLD<span class="sl">//</span>REAPER</span>
+    <span class="badge" id="modeBadge">···</span>
+    <span class="badge" id="demoBadge">DEMO</span>
+    <span id="offline"><span class="led led-down"></span>offline</span>
+    <span id="clock" aria-label="UTC clock">--:--:-- UTC</span>
+    <button id="rainToggle" type="button" aria-pressed="false" aria-label="toggle matrix rain">rain</button>
+    <span class="chip" id="chipHunt" hidden>hunt <b>—</b></span>
+    <span class="chip" id="chipGeo" hidden>—</span>
+  </header>
+
+  <div class="mockhint" id="mockhint" hidden>mock session — attach bot for live state</div>
+
+  <main class="grid">
+
+    <!-- ── row A · equity ── -->
+    <section class="panel s8" id="equity-panel" aria-label="equity curve">
+      <h2>equity curve <span class="hval" id="eqNow">—</span></h2>
+      <div class="chartbox" id="eqBody">
+        <canvas id="eqCanvas" role="img" aria-label="equity over recent bars"></canvas>
       </div>
-    </header>
-  </div>
+      <div id="eqStats">
+        <span>day<b id="stDay">—</b></span>
+        <span>week<b id="stWeek">—</b></span>
+        <span>month<b id="stMonth">—</b></span>
+        <span>equity<b id="stEq" class="g">—</b></span>
+      </div>
+    </section>
 
-  <div class="grid">
-    <div class="frame col8">
-      <span class="c3"></span><span class="c4"></span>
-      <h2>equity curve</h2>
-      <div id="chart"></div>
-    </div>
+    <!-- ── row A · regime ── -->
+    <section class="panel s4" id="regime-panel" aria-label="regime">
+      <h2>regime</h2>
+      <div class="regname" id="regName">—</div>
+      <div class="confbar" aria-hidden="true"><i id="confFill"></i></div>
+      <div class="regmeta">
+        <span id="confPct">confidence —</span>
+        <span class="enginetag" id="engineTag">engine: —</span>
+      </div>
+      <div class="regrow">
+        <span class="lab">session</span>
+        <span class="val" id="sessName">—</span>
+      </div>
+      <div class="regrow">
+        <span class="lab">hunt window</span>
+        <span class="val" id="huntName">—</span>
+      </div>
+    </section>
 
-    <div class="frame col4">
-      <span class="c3"></span><span class="c4"></span>
-      <h2>session</h2>
-      <div class="big g" id="equity">—</div>
-      <div class="m" id="daypnl">—</div>
-      <div style="margin-top:14px">
-        <table>
-          <tr><td class="m">week pnl</td><td id="weekpnl" class="g">—</td></tr>
-          <tr><td class="m">month pnl</td><td id="monthpnl" class="g">—</td></tr>
-          <tr><td class="m">block (4h)</td><td><span id="block" class="g">—</span>
-              <span class="m">/ target</span></td></tr>
-          <tr><td class="m">streak</td><td id="streak">—</td></tr>
-          <tr><td class="m">guard</td><td><span class="led g"></span>breakers armed</td></tr>
+    <!-- ── row B · position ── -->
+    <section class="panel s4" id="position-panel" aria-label="open position">
+      <h2>position</h2>
+      <div id="posBody">
+        <div class="posflat"><span class="led led-standby"></span> flat · scanning</div>
+      </div>
+    </section>
+
+    <!-- ── row B · gauges ── -->
+    <section class="panel s4" id="gauges-panel" aria-label="pnl gauges">
+      <h2>pnl gauges</h2>
+      <div id="gaugeRow">
+        <div class="gauge">
+          <svg viewBox="0 0 200 142" aria-hidden="true">
+            <path class="gtrack" id="g1track" d=""></path>
+            <path class="gfill"  id="g1fill"  d=""></path>
+            <line id="g1tick" stroke="#5E6A66" stroke-width="1.5"></line>
+            <text class="gval" id="g1val" x="100" y="88" text-anchor="middle" fill="#5E6A66">—</text>
+            <text class="gsub" id="gsub1" x="100" y="106" text-anchor="middle">target $—</text>
+          </svg>
+          <div class="glabel">session → block</div>
+        </div>
+        <div class="gauge">
+          <svg viewBox="0 0 200 142" aria-hidden="true">
+            <path class="gtrack" id="g2track" d=""></path>
+            <path class="gfill"  id="g2fill"  d=""></path>
+            <text class="gval" id="g2val" x="100" y="88" text-anchor="middle" fill="#5E6A66">—</text>
+            <text class="gsub" id="gsub2" x="100" y="106" text-anchor="middle">target $120</text>
+          </svg>
+          <div class="glabel">day → $120</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── row B · radar ── -->
+    <section class="panel s4" id="radar-panel" aria-label="dimension radar">
+      <h2>dimension radar</h2>
+      <div class="chartbox-radar" id="radarBody">
+        <canvas id="radarCanvas" role="img" aria-label="ten signal dimensions, 0 to 1"></canvas>
+      </div>
+    </section>
+
+    <!-- ── row C · trades ── -->
+    <section class="panel s8" id="trades-panel" aria-label="recent trades">
+      <h2>trades · last 20 <span class="hval dim" id="tcount">awaiting</span></h2>
+      <div class="scroll tscroll">
+        <table id="ttable">
+          <caption class="sr-only">Last 20 closed trades, latest first. Click a column header to sort.</caption>
+          <thead>
+            <tr>
+              <th data-k="ts"><button type="button">ts<span class="caret"></span></button></th>
+              <th data-k="side"><button type="button">side<span class="caret"></span></button></th>
+              <th data-k="size_oz"><button type="button">size_oz<span class="caret"></span></button></th>
+              <th data-k="entry"><button type="button">entry<span class="caret"></span></button></th>
+              <th data-k="pnl"><button type="button">pnl<span class="caret"></span></button></th>
+              <th data-k="regime"><button type="button">regime<span class="caret"></span></button></th>
+              <th data-k="session"><button type="button">session<span class="caret"></span></button></th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="7" class="dim">awaiting telemetry…</td></tr>
+          </tbody>
         </table>
       </div>
+    </section>
+
+    <!-- ── row C · right stack ── -->
+    <div class="s4 rstack">
+      <section class="panel" id="brokers-panel" aria-label="brokers">
+        <h2>brokers</h2>
+        <div id="brokerRows"><div class="brow dim">awaiting telemetry…</div></div>
+      </section>
+
+      <section class="panel" id="streak-panel" aria-label="win streak">
+        <h2>win streak</h2>
+        <div class="big" id="streakNum">—</div>
+        <div class="streaksub" id="streakSub">W— · L—</div>
+      </section>
+
+      <section class="panel" id="log-panel" aria-label="event stream">
+        <h2><span style="display:inline-flex;align-items:center;gap:7px;"><span class="led led-up pulse"></span>stream</span><span class="hval dim">/api/stream</span></h2>
+        <div id="log" class="scroll logbox" aria-live="polite" aria-label="event log, newest first"></div>
+      </section>
     </div>
 
-    <div class="frame col4">
-      <span class="c3"></span><span class="c4"></span>
-      <h2>open position</h2>
-      <div id="position">no open position</div>
-    </div>
+  </main>
 
-    <div class="frame col8">
-      <span class="c3"></span><span class="c4"></span>
-      <h2>recent trades</h2>
-      <table id="trades">
-        <tr><th>time</th><th>side</th><th>oz</th><th>entry</th><th>pnl</th><th>regime</th></tr>
-      </table>
-    </div>
+  <!-- ── footer ── -->
+  <footer id="footer">
+    <span>paper-first · losses published not hidden · not investment advice</span>
+    <span class="khint" title="keyboard: s/p standby · l log · d demo" aria-hidden="true"><kbd>s</kbd><kbd>p</kbd><kbd>l</kbd><kbd>d</kbd></span>
+    <a class="github" href="https://github.com/muhammadwhizz-web/gold-reaper" target="_blank" rel="noopener">muhammadwhizz-web/gold-reaper</a>
+  </footer>
 
-    <div class="frame col12">
-      <span class="c3"></span><span class="c4"></span>
-      <h2>execution log <span class="m">// live tail</span></h2>
-      <pre id="log" class="cursor"></pre>
-    </div>
-  </div>
+</div>
 
-  <div class="m" style="margin-top:10px;font-size:11px">
-    simulation default · past performance does not guarantee future results ·
-    read docs/RISK.md before risking capital
+<!-- ── standby overlay ── -->
+<div id="standby">
+  <div class="sbpanel" role="dialog" aria-label="standby">
+    <div class="sbt">STANDBY — hunting paused</div>
+    <div class="sbs">press s to resume</div>
   </div>
 </div>
 
 <script>
-/* ── matrix rain canvas (subtle) ─────────────────────────────── */
-(function(){
-  const cv = document.getElementById('rain'), ctx = cv.getContext('2d');
-  const glyphs='01ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄ+=<>';
-  let cols, drops;
-  function fit(){ cv.width=innerWidth; cv.height=innerHeight;
-    cols=Math.floor(cv.width/16); drops=Array(cols).fill(1).map(
-      ()=>Math.random()*-50); }
-  fit(); addEventListener('resize', fit);
-  setInterval(()=>{
-    ctx.fillStyle='rgba(10,14,15,0.14)'; ctx.fillRect(0,0,cv.width,cv.height);
-    ctx.font='13px monospace';
-    for(let i=0;i<cols;i++){
-      ctx.fillStyle = Math.random()>0.975 ? '#7dffd2' : '#0f5c3c';
-      ctx.fillText(glyphs[Math.floor(Math.random()*glyphs.length)],
-                   i*16, drops[i]*16);
-      if(drops[i]*16>cv.height && Math.random()>0.976) drops[i]=0;
-      drops[i]++;
-    }
-  }, 66);
-})();
+/* ══════════════════════════════════════════════════════════════
+   GOLD//REAPER ops console — vanilla JS, no build step.
+   Consumes: GET /api/state (5s) · GET /api/trades (15s) · /api/stream (SSE)
+   ══════════════════════════════════════════════════════════════ */
+(() => {
+"use strict";
 
-/* ── helpers ─────────────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
-const fmt = (x,d=2) => (x==null?'—':Number(x).toLocaleString('en-US',
-  {minimumFractionDigits:d,maximumFractionDigits:d}));
-const sgn = x => (x>=0?'+':'') + fmt(x);
+const RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const MONO = "'JetBrains Mono','DejaVu Sans Mono','Fira Mono',ui-monospace,Menlo,Consolas,monospace";
+const HAS_CHART = typeof Chart !== "undefined";
 
-/* mock fallback (also embedded into the gh-pages build) */
-const MOCK = window.MOCK_DATA || null;
+/* ── helpers ── */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+const fmtMoney = v => Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const signed = v => (Number(v) > 0 ? "+" : "") + Number(v).toFixed(2);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const parseNum = v => {
+  if (v === null || v === undefined) return null;
+  const n = parseFloat(String(v).replace(/[$,\s]/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
+const setSignColor = (el, v) => {
+  el.classList.remove("g", "r", "a", "dim");
+  el.classList.add(v > 0 ? "g" : v < 0 ? "r" : "dim");
+};
 
-async function getJSON(url, ms=1200){
-  const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), ms);
-  try { const r = await fetch(url,{signal:ctl.signal}); clearTimeout(t);
-        if(!r.ok) throw 0; return await r.json(); }
-  catch(e){ clearTimeout(t); return null; }
+/* ── offline LED ── */
+const setOffline = on => $("offline").classList.toggle("on", on);
+
+/* ── UTC clock ── */
+function tickClock() { $("clock").textContent = new Date().toISOString().slice(11, 19) + " UTC"; }
+
+/* ─────────────────────────────────────────────── matrix rain ── */
+const RAIN = $("rain"), RX = RAIN.getContext("2d");
+const COL_W = 14;
+const GLYPHS = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789";
+let drops = [], rainTimer = null, rainOn = false, rainPref = localStorage.getItem("gr_rain");
+
+function rainSize() {
+  RAIN.width = window.innerWidth; RAIN.height = window.innerHeight;
+  const n = Math.ceil(RAIN.width / COL_W);
+  drops = Array.from({ length: n }, () => Math.floor(Math.random() * RAIN.height / COL_W));
+}
+function rainDraw() {
+  RX.fillStyle = "rgba(10,14,15,0.08)"; RX.fillRect(0, 0, RAIN.width, RAIN.height);
+  RX.font = "13px monospace";
+  for (let i = 0; i < drops.length; i++) {
+    RX.fillStyle = "rgba(0,255,156,0.85)";
+    RX.fillText(GLYPHS[(Math.random() * GLYPHS.length) | 0], i * COL_W, drops[i] * COL_W);
+    if (drops[i] * COL_W > RAIN.height && Math.random() > 0.975) drops[i] = 0;
+    drops[i]++;
+  }
+}
+function rainStatic() { // one frame for prefers-reduced-motion
+  RX.clearRect(0, 0, RAIN.width, RAIN.height);
+  RX.font = "13px monospace"; RX.fillStyle = "rgba(0,255,156,0.5)";
+  for (let i = 0; i < drops.length; i++)
+    RX.fillText(GLYPHS[(Math.random() * GLYPHS.length) | 0], i * COL_W, drops[i] * COL_W);
+}
+function setRain(on, persist) {
+  rainOn = on;
+  RAIN.style.display = on ? "block" : "none";
+  $("rainToggle").setAttribute("aria-pressed", String(on));
+  if (persist) { rainPref = on ? "1" : "0"; localStorage.setItem("gr_rain", rainPref); }
+  if (rainTimer) { clearInterval(rainTimer); rainTimer = null; }
+  if (!on) { RX.clearRect(0, 0, RAIN.width, RAIN.height); return; }
+  if (RM) rainStatic();
+  else rainTimer = setInterval(rainDraw, 42); // ~24 fps
+}
+$("rainToggle").addEventListener("click", () => setRain(!rainOn, true));
+
+/* ─────────────────────────────────────────────── SVG arc gauges ── */
+const A0 = 150, SWEEP = 240; // 240° sweep, start lower-left
+const arcPath = (r, a0, a1) => {
+  const rad = d => d * Math.PI / 180;
+  const x0 = 100 + r * Math.cos(rad(a0)), y0 = 98 + r * Math.sin(rad(a0));
+  const x1 = 100 + r * Math.cos(rad(a1)), y1 = 98 + r * Math.sin(rad(a1));
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${(a1 - a0) > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+};
+function buildGauges() {
+  $("g1track").setAttribute("d", arcPath(74, A0, A0 + SWEEP));
+  $("g2track").setAttribute("d", arcPath(74, A0, A0 + SWEEP));
+  const rad = 310 * Math.PI / 180; // target tick at 100% of the 150% scale
+  $("g1tick").setAttribute("x1", (100 + 62 * Math.cos(rad)).toFixed(1));
+  $("g1tick").setAttribute("y1", (98 + 62 * Math.sin(rad)).toFixed(1));
+  $("g1tick").setAttribute("x2", (100 + 86 * Math.cos(rad)).toFixed(1));
+  $("g1tick").setAttribute("y2", (98 + 86 * Math.sin(rad)).toFixed(1));
+}
+function drawGauge(fillEl, valEl, frac, color, text, textColor) {
+  const f = clamp(frac, 0.004, 1);
+  fillEl.setAttribute("d", arcPath(74, A0, A0 + SWEEP * f));
+  fillEl.style.stroke = color;
+  valEl.textContent = text;
+  valEl.setAttribute("fill", textColor);
+}
+function renderGauges(s) {
+  // session: block_pnl toward block_target, scale 0..150%, overfill amber→green
+  const target = Number(s.block_target) || 20;
+  const ratio = clamp((Number(s.block_pnl) || 0) / target, 0, 1.5);
+  const hit = ratio >= 1;
+  drawGauge($("g1fill"), $("g1val"), ratio / 1.5,
+            hit ? "#00FF9C" : "#FFBF00", signed(s.block_pnl), hit ? "#00FF9C" : "#FFBF00");
+  $("gsub1").textContent = "target $" + target;
+  // day: day_pnl toward $120, display clamp [-0.25, 1], negative red
+  const day = Number(s.day_pnl) || 0;
+  const dFrac = clamp(day / 120, -0.25, 1);
+  drawGauge($("g2fill"), $("g2val"), Math.abs(dFrac),
+            day < 0 ? "#FF5555" : "#00FF9C", signed(day), day < 0 ? "#FF5555" : "#00FF9C");
 }
 
-/* ── equity chart (inline SVG, no CDN) ───────────────────────── */
-function drawChart(hist){
-  if(!hist || hist.length<2) return;
-  const W=680,H=190,P=28;
-  const min=Math.min(...hist), max=Math.max(...hist);
-  const span=(max-min)||1;
-  const xy = hist.map((v,i)=>[
-    P+i*(W-2*P)/(hist.length-1),
-    H-P-(v-min)*(H-2*P)/span ]);
-  const path = xy.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join('');
-  const area = path + `L${xy[xy.length-1][0].toFixed(1)},${H-P}L${xy[0][0].toFixed(1)},${H-P}Z`;
-  const up = hist[hist.length-1] >= hist[0];
-  const col = up ? '#00FF9C' : '#FF3B3B';
-  let ticks='';
-  [0,.5,1].forEach(f=>{
-    const v=min+span*(1-f), y=P+f*(H-2*P);
-    ticks+=`<text x="2" y="${y+3}">${v.toFixed(0)}</text>`+
-           `<line x1="${P}" y1="${y}" x2="${W-P}" y2="${y}" stroke="#1B2327"/>`;});
-  $('chart').innerHTML =
-    `<svg class="chart" viewBox="0 0 ${W} ${H}" width="100%">
-      ${ticks}
-      <path d="${area}" fill="${col}" opacity="0.07"/>
-      <path d="${path}" fill="none" stroke="${col}" stroke-width="1.6"/>
-      <circle cx="${xy[xy.length-1][0]}" cy="${xy[xy.length-1][1]}"
-              r="3" fill="${col}"/>
-     </svg>`;
+/* ─────────────────────────────────────────────── charts ── */
+let eqChart = null, radChart = null;
+if (HAS_CHART) {
+  Chart.defaults.font.family = MONO;
+  Chart.defaults.color = "#5E6A66";
 }
+const DARK_TIP = {
+  backgroundColor: "#0E1517", borderColor: "#1A2422", borderWidth: 1,
+  titleColor: "#5E6A66", bodyColor: "#00FF9C", displayColors: false,
+  padding: 8, cornerRadius: 2, titleFont: { size: 10 }, bodyFont: { size: 11 }
+};
 
-/* ── render state ────────────────────────────────────────────── */
-function renderState(s){
-  if(!s) return;
-  $('equity').textContent = fmt(s.equity)+' USD';
-  $('daypnl').textContent = sgn(s.day_pnl)+' today';
-  $('daypnl').className = s.day_pnl>=0?'g':'r';
-  $('weekpnl').textContent = sgn(s.week_pnl);
-  $('monthpnl').textContent = sgn(s.month_pnl);
-  $('block').textContent = sgn(s.block_pnl);
-  const w=s.wins,l=s.losses;
-  $('streak').innerHTML = `<span class="g">${w}W</span> / <span class="m">${l}L</span>`;
-  $('mode').textContent = s.mode==='live' ? '● live bot attached' : '○ mock session';
-  $('regime').textContent = 'regime '+(s.regime||'—').toLowerCase();
-  const p=s.position;
-  $('position').innerHTML = p ? `
-    <div class="big ${p.side==='LONG'?'g':'r'}">${p.side} XAUUSD</div>
-    <table style="margin-top:8px">
-      <tr><td class="m">size</td><td>${p.size_oz} oz</td></tr>
-      <tr><td class="m">entry</td><td>${fmt(p.entry)}</td></tr>
-      <tr><td class="m">stop ${p.be?'(be)':''}</td><td class="a">${fmt(p.sl)}</td></tr>
-      <tr><td class="m">target</td><td class="g">${fmt(p.tp)}</td></tr>
-      <tr><td class="m">opened</td><td class="m">${p.opened||''}</td></tr>
-    </table>` : 'no open position';
-  drawChart(s.equity_history);
-}
-
-function renderTrades(rows){
-  const t=$('trades');
-  rows.slice(0,20).forEach(r=>{
-    const tr=document.createElement('tr');
-    const pnl=parseFloat((r.pnl||'0').toString().replace('+',''));
-    tr.innerHTML=`<td class="m">${r.ts||r.ts_utc||''}</td>
-      <td class="${r.side==='LONG'?'g':'r'}">${r.side||''}</td>
-      <td class="m">${r.size_oz||''}</td>
-      <td>${r.entry||''}</td>
-      <td class="${pnl>=0?'g':'r'}">${r.pnl||''}</td>
-      <td class="m">${(r.regime||'').toLowerCase()}</td>`;
-    t.appendChild(tr);
+function buildEqChart() {
+  if (!HAS_CHART) return;
+  eqChart = new Chart($("eqCanvas"), {
+    type: "line",
+    data: { labels: [], datasets: [
+      { label: "equity", data: [], borderColor: "#00FF9C", borderWidth: 1.5,
+        pointRadius: 0, pointHoverRadius: 3, tension: 0.25, fill: true,
+        backgroundColor: ctx => {
+          const { chart } = ctx, { ctx: c, chartArea } = chart;
+          if (!chartArea) return "rgba(0,255,156,0.06)";
+          const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          g.addColorStop(0, "rgba(0,255,156,0.20)");
+          g.addColorStop(1, "rgba(0,255,156,0)");
+          return g;
+        } },
+      { label: "session open", data: [], borderColor: "#00D9FF", borderWidth: 1,
+        borderDash: [5, 5], pointRadius: 0, fill: false }
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: Object.assign({}, DARK_TIP, {
+          filter: item => item.datasetIndex === 0,
+          callbacks: {
+            title: items => "bar " + items[0].label,
+            label: c => "equity $" + fmtMoney(c.parsed.y)
+          }
+        })
+      },
+      scales: {
+        x: { grid: { color: "#1A2422", drawTicks: false }, border: { color: "#1A2422" },
+             ticks: { maxRotation: 0, autoSkip: false, font: { size: 10 },
+                      callback: function (v, i) {
+                        const n = this.getLabels().length;
+                        const step = Math.max(8, Math.round(n / 6));
+                        return (i % step === 0 || i === n - 1) ? this.getLabels()[i] : "";
+                      } } },
+        y: { grid: { color: "#1A2422" }, border: { color: "#1A2422" },
+             ticks: { font: { size: 10 }, callback: v => "$" + (v >= 10000 ? (v / 1000).toFixed(1) + "k" : v) } }
+      }
+    }
   });
 }
-
-/* ── log tail (SSE with mock fallback) ───────────────────────── */
-function startLog(){
-  const el=$('log'); let n=0;
-  const push=(line)=>{ el.textContent += line+"\n"; n++;
-    if(n>200){ el.textContent=''; n=0; }
-    el.scrollTop=el.scrollHeight; };
-  const es = new EventSource('/api/stream');
-  es.onmessage = e => { try{ push(JSON.parse(e.data).line); }catch(_){} };
-  es.onerror = () => { es.close();
-    (window.MOCK_LOG||[]).forEach(push);
-    const beat=()=>{ const t=new Date().toISOString().substr(11,8);
-      push(`${t} | static demo · guard armed · waiting block window`);
-      setTimeout(beat, 4000); };
-    setTimeout(beat, 2500); };
+function updateEqChart(hist) {
+  if (!eqChart || !Array.isArray(hist) || !hist.length) return;
+  eqChart.data.labels = hist.map((_, i) => String(i));
+  eqChart.data.datasets[0].data = hist;
+  eqChart.data.datasets[1].data = hist.map(() => hist[0]); // cyan dashed session-open baseline
+  eqChart.update("none");
 }
 
-/* ── boot ────────────────────────────────────────────────────── */
-(async function(){
-  let s = await getJSON('/api/state');
-  let tr = await getJSON('/api/trades');
-  if(!s && MOCK){ s=MOCK.state; tr={rows:MOCK.trades}; }
-  renderState(s); renderTrades(tr?tr.rows:[]); startLog();
+function buildRadarChart() {
+  if (!HAS_CHART) return;
+  radChart = new Chart($("radarCanvas"), {
+    type: "radar",
+    data: { labels: [], datasets: [{
+      data: [], borderColor: "#00FF9C", borderWidth: 1.5,
+      backgroundColor: "rgba(0,255,156,0.35)",
+      pointRadius: 2.5, pointHoverRadius: 4,
+      pointBackgroundColor: [], pointBorderColor: "rgba(0,255,156,0.5)"
+    }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false },
+                 tooltip: Object.assign({}, DARK_TIP, {
+                   callbacks: { label: c => c.label + " " + Number(c.parsed.r).toFixed(2) } }) },
+      scales: { r: {
+        min: 0, max: 1,
+        ticks: { display: false, stepSize: 0.25 },
+        grid: { color: "#1A2422" }, angleLines: { color: "#1A2422" },
+        pointLabels: { color: "#5E6A66", font: { size: 10 }, padding: 4 }
+      } }
+    }
+  });
+}
+function updateRadar(dims) {
+  if (!radChart || !Array.isArray(dims) || !dims.length) return;
+  radChart.data.labels = dims.map(d => d.name);
+  radChart.data.datasets[0].data = dims.map(d => Number(d.value) || 0);
+  radChart.data.datasets[0].pointBackgroundColor =
+    dims.map(d => d.active ? "#00FF9C" : "rgba(0,255,156,0.22)"); // active dims full opacity
+  radChart.update("none");
+}
+
+/* ─────────────────────────────────────────────── position card ── */
+function renderPosition(p) {
+  const box = $("posBody");
+  if (!p) {
+    box.innerHTML = '<div class="posflat"><span class="led led-standby"></span> flat · scanning</div>';
+    return;
+  }
+  const sl = parseNum(p.sl), en = parseNum(p.entry), tp = parseNum(p.tp);
+  let lo = Math.min(sl, en, tp), hi = Math.max(sl, en, tp);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) { lo = 0; hi = 1; }
+  if (hi === lo) { hi = lo + Math.max(1, Math.abs(lo) * 0.001); }
+  const pad = (hi - lo) * 0.10; lo -= pad; hi += pad;
+  const pct = v => clamp(((v - lo) / (hi - lo)) * 100, 0, 100).toFixed(2) + "%";
+  const mk = (cls, row, price, lab) =>
+    `<div class="mk ${cls} ${row}" style="left:${pct(price)}"><span class="mklab">${lab} ${fmtMoney(price)}</span></div>`;
+  box.innerHTML =
+    `<div class="poshead">
+       <span class="sidebadge ${String(p.side).toLowerCase() === "long" ? "long" : "short"}">${esc(p.side)}</span>
+       ${p.be ? '<span class="bechip" title="stop moved to breakeven">BE</span>' : ""}
+       <span class="dim" style="margin-left:auto;font-size:10px;">${esc(p.opened || "")}</span>
+     </div>
+     <div class="posstats">
+       <span><span class="k">size</span><span class="v">${esc(p.size_oz)} oz</span></span>
+       <span><span class="k">entry</span><span class="v c">${fmtMoney(en)}</span></span>
+     </div>
+     <div class="band" aria-hidden="true">
+       ${mk("sl", "r1", sl, "SL")}
+       ${mk("entry", "r2", en, "EN")}
+       ${mk("tp", "r1", tp, "TP")}
+     </div>`;
+}
+
+/* ─────────────────────────────────────────────── trades table ── */
+const NUMERIC_COLS = new Set(["size_oz", "entry", "pnl"]);
+let TRADES = [];
+const sortState = { key: "ts", dir: -1 }; // newest first by default
+
+function sortTrades() {
+  const k = sortState.key, dir = sortState.dir, numeric = NUMERIC_COLS.has(k);
+  TRADES = [...TRADES].sort((a, b) => {
+    let r;
+    if (numeric) {
+      const na = parseNum(a[k]), nb = parseNum(b[k]);
+      r = (na === null && nb === null) ? 0 : na === null ? 1 : nb === null ? -1 : na - nb;
+    } else {
+      r = String(a[k] ?? "").localeCompare(String(b[k] ?? ""), undefined, { numeric: true });
+    }
+    return dir * r;
+  });
+}
+function renderTrades() {
+  sortTrades();
+  const tb = $("tbody");
+  if (!TRADES.length) { tb.innerHTML = '<tr><td colspan="7" class="dim">no trades yet</td></tr>'; }
+  else {
+    tb.innerHTML = TRADES.map(t => {
+      const n = parseNum(t.pnl);
+      const pc = n === null ? "zero" : n > 0 ? "pos" : n < 0 ? "neg" : "zero";
+      const sc = String(t.side).toUpperCase() === "LONG" ? "s-long" : "s-short";
+      return `<tr>
+        <td class="dim">${esc(t.ts)}</td>
+        <td class="${sc}">${esc(t.side)}</td>
+        <td>${esc(t.size_oz)}</td>
+        <td>${esc(t.entry)}</td>
+        <td class="pnl ${pc}">${esc(t.pnl)}</td>
+        <td class="dim">${esc(t.regime)}</td>
+        <td class="dim">${esc(t.session)}</td>
+      </tr>`;
+    }).join("");
+  }
+  $("tcount").textContent = TRADES.length + " rows";
+  document.querySelectorAll("#ttable thead th").forEach(th => {
+    const active = th.dataset.k === sortState.key;
+    th.setAttribute("aria-sort", active ? (sortState.dir === 1 ? "ascending" : "descending") : "none");
+    th.querySelector(".caret").textContent = active ? (sortState.dir === 1 ? "▲" : "▼") : "";
+  });
+}
+document.querySelector("#ttable thead").addEventListener("click", e => {
+  const th = e.target.closest("th"); if (!th) return;
+  const k = th.dataset.k;
+  if (sortState.key === k) sortState.dir *= -1;
+  else { sortState.key = k; sortState.dir = NUMERIC_COLS.has(k) ? -1 : 1; }
+  renderTrades();
+});
+
+/* ─────────────────────────────────────────────── log tail ── */
+function addLog(t, line) {
+  const box = $("log");
+  const m = /^(\d{2}:\d{2}:\d{2}) \| (.*)$/.exec(String(line));
+  const ts = m ? m[1] : (t || "");
+  const msg = m ? m[2] : String(line);
+  const div = document.createElement("div");
+  div.className = "ln";
+  div.innerHTML = `<span class="lt">${esc(ts)}</span><span class="lm">${esc(msg)}</span><span class="cur">▊</span>`;
+  const prev = box.querySelector(".cur"); if (prev) prev.remove();
+  box.prepend(div); // newest on top
+  while (box.children.length > 120) box.lastElementChild.remove(); // cap 120
+  if (box.scrollTop <= 4) box.scrollTop = 0; // pin to newest only if at top
+}
+const es = new EventSource("/api/stream");
+es.onmessage = e => { try { const d = JSON.parse(e.data); addLog(d.t || "", d.line || ""); } catch (_) {} };
+
+/* ─────────────────────────────────────────────── state render ── */
+let rainResolved = false;
+function renderState(s) {
+  // top bar: mode badge + mock hint + chips
+  const badge = $("modeBadge");
+  badge.textContent = String(s.mode || "?").toUpperCase();
+  badge.classList.toggle("live", s.mode === "live");
+  $("mockhint").hidden = s.mode !== "mock";
+  if (s.hunt_window) { $("chipHunt").hidden = false; $("chipHunt").innerHTML = "hunt <b>" + esc(s.hunt_window) + "</b>"; }
+  if (s.geometry) { $("chipGeo").hidden = false; $("chipGeo").textContent = s.geometry; }
+
+  // breaker / recovery banner strip
+  const banner = $("banner");
+  if (s.latched) { banner.hidden = false; banner.className = "red"; banner.textContent = "breaker latched"; }
+  else if (s.recovery) { banner.hidden = false; banner.className = "amber"; banner.textContent = "recovery mode"; }
+  else banner.hidden = true;
+
+  // regime panel
+  const reg = s.regime || {};
+  $("regName").textContent = String(reg.name || "—").toUpperCase();
+  const conf = clamp(Number(reg.confidence) || 0, 0, 1);
+  $("confFill").style.width = (conf * 100).toFixed(0) + "%";
+  $("confPct").textContent = "confidence " + Math.round(conf * 100) + "%";
+  $("engineTag").textContent = "engine: " + (reg.engine || "—");
+  $("sessName").textContent = s.session || "—";
+  $("huntName").textContent = s.hunt_window || "—";
+
+  // equity panel
+  updateEqChart(s.equity_history);
+  const eq = Number(s.equity);
+  $("eqNow").textContent = Number.isFinite(eq) ? "$" + fmtMoney(eq) : "—";
+  setSignColor($("stDay"), Number(s.day_pnl) || 0);
+  $("stDay").textContent = signed(s.day_pnl || 0);
+  setSignColor($("stWeek"), Number(s.week_pnl) || 0);
+  $("stWeek").textContent = signed(s.week_pnl || 0);
+  setSignColor($("stMonth"), Number(s.month_pnl) || 0);
+  $("stMonth").textContent = signed(s.month_pnl || 0);
+  $("stEq").textContent = Number.isFinite(eq) ? "$" + fmtMoney(eq) : "—";
+
+  // position · gauges · radar
+  renderPosition(s.position);
+  renderGauges(s);
+  updateRadar(s.dims);
+
+  // brokers
+  const rows = Array.isArray(s.brokers) ? s.brokers : [];
+  $("brokerRows").innerHTML = rows.length
+    ? rows.map(b => {
+        const st = String(b.state || "standby");
+        const lat = (b.latency_ms === null || b.latency_ms === undefined) ? "—" : b.latency_ms + "ms";
+        return `<div class="brow"><span class="led led-${esc(st)}"></span><span class="bname">${esc(b.name)}</span><span class="blat">${esc(lat)}</span></div>`;
+      }).join("")
+    : '<div class="brow dim">no broker data</div>';
+
+  // win streak
+  const st = Number(s.streak) || 0;
+  const sn = $("streakNum");
+  sn.textContent = (st > 0 ? "+" : "") + st;
+  sn.classList.toggle("zero", st === 0);
+  sn.classList.toggle("neg", st < 0);
+  $("streakSub").textContent = `W${s.wins ?? "—"} · L${s.losses ?? "—"}`;
+
+  // matrix rain default: ON in mock mode (only when user has no stored preference)
+  if (!rainResolved) {
+    rainResolved = true;
+    if (rainPref === null) setRain(s.mode === "mock", true);
+  }
+}
+
+/* ─────────────────────────────────────────────── fetch loop ── */
+async function fetchState() {
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" });
+    renderState(await r.json());
+    setOffline(false);
+  } catch (_) { setOffline(true); }
+}
+async function fetchTrades() {
+  try {
+    const r = await fetch("/api/trades", { cache: "no-store" });
+    const j = await r.json();
+    TRADES = Array.isArray(j.rows) ? j.rows : [];
+    renderTrades();
+    setOffline(false);
+  } catch (_) { setOffline(true); }
+}
+
+/* ─────────────────────────────────────────────── keyboard shortcuts ── */
+function toggleStandby() { document.body.classList.toggle("standby"); }
+function toggleLog() { const p = $("log-panel"); p.hidden = !p.hidden; }
+function toggleDemo() { document.body.classList.toggle("demo"); }
+window.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (/^(input|textarea|select)$/i.test(e.target.tagName || "")) return;
+  const k = e.key.toLowerCase();
+  if (k === "s" || k === "p") toggleStandby(); // p is an alias of s
+  else if (k === "l") toggleLog();
+  else if (k === "d") toggleDemo();
+});
+
+/* ─────────────────────────────────────────────── boot ── */
+buildGauges();
+buildEqChart();
+buildRadarChart();
+tickClock(); setInterval(tickClock, 1000);
+rainSize();
+if (rainPref === "1") setRain(true, false);
+else if (rainPref === "0") setRain(false, false);
+window.addEventListener("resize", () => { rainSize(); if (rainOn && RM) rainStatic(); });
+
+fetchState();  fetchTrades();
+setInterval(fetchState, 5000);   // auto-refresh state every 5s
+setInterval(fetchTrades, 15000); // auto-refresh trades every 15s
+
 })();
 </script>
 </body>

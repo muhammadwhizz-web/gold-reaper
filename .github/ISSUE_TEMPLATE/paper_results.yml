@@ -1,0 +1,27 @@
+name: Paper result
+description: Share your PAPER-mode track record — wins and losses both matter.
+labels: [paper-track-record]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repo publishes losing regimes next to winning ones. Post your
+        paper results in the same spirit — edited cherry-picks will be called out.
+  - type: input
+    id: period
+    attributes:
+      label: Period (UTC)
+      placeholder: "2026-10-09 → 2026-10-23"
+    validations:
+      required: true
+  - type: textarea
+    id: stats
+    attributes:
+      label: Results (trades, net PnL, max drawdown)
+      description: Copy the row from docs/TRACK_RECORD.md or paste `data/trades.csv` summary.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes (config, broker, anything odd)

@@ -1,0 +1,51 @@
+name: Bug report
+description: Something broke. Include the exact command and the exact error.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep it reproducible: what you ran, what happened, what you expected.
+        Strip credentials — never paste API keys or passwords.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Exact error text wins over paraphrase.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Command to reproduce
+      placeholder: |
+        python bot.py --paper
+        (plus the last ~20 lines of data/reaper.log if relevant)
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options: [Windows, Linux, macOS, other]
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: "3.12.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: broker
+    attributes:
+      label: Broker / mode
+      options: [PAPER, MT5 (Exness), Bitget, dashboard only]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      render: shell

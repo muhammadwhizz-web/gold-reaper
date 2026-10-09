@@ -27,7 +27,7 @@ from pathlib import Path
 import pandas as pd
 
 from brokers.base import BrokerBase, OrderResult, Position
-from core.logger import cprint, RED, YELLOW
+from core.logger import RED, YELLOW, cprint
 
 TF_MAP = {"h1": 16385, "h4": 16388, "d1": 16408}  # MT5 constants
 

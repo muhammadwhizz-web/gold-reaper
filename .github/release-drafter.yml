@@ -1,0 +1,21 @@
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+categories:
+  - title: "Signal & research"
+    labels: ["signal", "research", "strategy", "risk"]
+  - title: "Visuals & demo"
+    labels: ["visuals", "dashboard", "demo", "brand"]
+  - title: "Ops & installers"
+    labels: ["ops", "installer", "ci", "watchdog"]
+  - title: "Docs"
+    labels: ["docs"]
+change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
+template: |
+  ## Changes
+
+  $CHANGES
+
+  ---
+
+  *Reproducibility note: every strategy number in the release notes comes
+  from a runnable command in research/. No profit promises are made.*

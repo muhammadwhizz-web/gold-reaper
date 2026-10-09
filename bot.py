@@ -37,7 +37,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 HEARTBEAT_FILE = ROOT / "data" / "heartbeat.json"
 PID_FILE = ROOT / "data" / "bot.pid"
 UPDATE_REPO = "muhammadwhizz-web/gold-reaper"
@@ -49,12 +49,24 @@ from brokers.paper_broker import PaperBroker  # noqa: E402
 from core import audit  # noqa: E402
 from core.config import CONFIG, Config  # noqa: E402
 from core.indicators import atr as atr_fn  # noqa: E402
-from core.logger import GREEN, GRAY, RED, YELLOW, banner, cprint, setup_logger  # noqa: E402
+from core.logger import (  # noqa: E402
+    GRAY,
+    GREEN,
+    RED,
+    YELLOW,
+    cprint,
+    setup_logger,
+)
 from core.news_brain import NewsBrain  # noqa: E402
 from core.notify import notify  # noqa: E402
 from core.regime import RegimeDetector  # noqa: E402
 from core.risk import RiskManager  # noqa: E402
-from core.risk_apex import ApexRisk, BLOCK_TARGET, MAX_RISK_PCT, MIN_RISK_PCT  # noqa: E402
+from core.risk_apex import (  # noqa: E402
+    BLOCK_TARGET,
+    MAX_RISK_PCT,
+    MIN_RISK_PCT,
+    ApexRisk,
+)
 from core.sessions import (  # noqa: E402
     friday_cutoff_reached,
     human_local,
@@ -228,7 +240,8 @@ class ReaperApexBot:
         return chain
 
     def start(self) -> int:
-        cprint(banner(), RED)
+        from core.logger import print_banner
+        print_banner(VERSION)
         log.info("APEX starting | account=%s broker=%s", self.label, self.cfg.broker)
         cprint(f"[*] account        : {self.label}", YELLOW)
         cprint(f"[*] mission        : ${BLOCK_TARGET:.0f}/4h block · "
@@ -312,7 +325,8 @@ class ReaperApexBot:
             self.risk.save()
             self.apex.save()
             self.broker.disconnect()
-            self._store.close()
+            if self._store is not None:
+                self._store.close()
             try:
                 PID_FILE.unlink(missing_ok=True)
             except Exception:  # noqa: BLE001
@@ -335,7 +349,7 @@ class ReaperApexBot:
             try:
                 from data.news_ingest import load_calendar, normalize
                 df = normalize(load_calendar())
-                if not df.empty:
+                if not df.empty and self._store is not None:
                     self._store.write_table("calendar", df, replace=True)
             except Exception as e:  # noqa: BLE001
                 log.warning("calendar refresh failed: %s", e)
@@ -383,14 +397,16 @@ class ReaperApexBot:
             return
 
         # ── APEX dimension assembly ─────────────────────────────────
+        if self._feed is None or self._news is None or self._apexx is None:
+            return  # components not initialised
         feat_row = self._feed.current(h1_closed, ts)
         regime = self._regime.classify(h1_closed.tail(600))
         news_state = self._news.state(ts)
         ml_prob = self._meta.prob(feat_row)
 
         # strategy-level gates first (cheap)
-        if in_blackout := getattr(__import__("core.sessions", fromlist=["in_blackout"]),
-                                  "in_blackout")(ts, self.cfg.blackout_hours_utc):
+        if getattr(__import__("core.sessions", fromlist=["in_blackout"]),
+                   "in_blackout")(ts, self.cfg.blackout_hours_utc):
             self._heartbeat("US-data blackout window")
             return
 
@@ -664,7 +680,7 @@ def _parse_accounts(spec: str) -> list[dict]:
         if not parts or not parts[0]:
             continue
         kind = parts[0].upper()
-        acc = {"kind": kind, "label": kind.lower()}
+        acc: dict[str, object] = {"kind": kind, "label": kind.lower()}
         if kind == "MT5" and len(parts) >= 4:
             acc.update({"login": int(parts[1]), "password": parts[2],
                         "server": parts[3]})
@@ -759,6 +775,7 @@ def main() -> int:
 def _spawn_dashboard() -> None:
     try:
         import uvicorn
+
         from core.dashboard import app
         uvicorn.run(app, host="0.0.0.0", port=8050, log_level="warning")
     except Exception as e:  # noqa: BLE001

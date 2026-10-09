@@ -20,12 +20,13 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
+from typing import Any
 
 import pandas as pd
 
 from brokers.base import BrokerBase, OrderResult, Position
 from brokers.health import retry_call
-from core.logger import cprint, CYAN, RED, YELLOW
+from core.logger import CYAN, RED, YELLOW, cprint
 
 try:
     import ccxt
@@ -67,7 +68,7 @@ class BitgetBroker(BrokerBase):
 
     def __init__(self, cfg) -> None:
         self.cfg = cfg
-        self.x = None
+        self.x: Any = None  # ccxt client (untyped 3rd-party)
         self.symbol = cfg.bitget_symbol
         self.market_type = getattr(cfg, "bitget_market", None) or \
             __import__("os").getenv("BITGET_MARKET", "swap").lower()
@@ -195,7 +196,7 @@ class BitgetBroker(BrokerBase):
         df["time"] = pd.to_datetime(df["ts"], unit="ms", utc=True)
         return df.set_index("time").drop(columns=["ts"])
 
-    def candles(self, timeframe: str, count: int) -> dict[str, object]:
+    def candles(self, timeframe: str, count: int) -> dict[str, pd.DataFrame]:
         if self.x is None:
             return {"h1": pd.DataFrame(), "h4": pd.DataFrame()}
         return {"h1": self._ohlcv("h1", count), "h4": self._ohlcv("h4", count)}

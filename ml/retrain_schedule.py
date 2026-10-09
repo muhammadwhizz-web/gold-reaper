@@ -20,9 +20,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from core.audit import log_event  # noqa: E402
-
 import ml.train_meta as tm  # noqa: E402
+from core.audit import log_event  # noqa: E402
 
 
 def retrain_weekly(force: bool = False) -> int:

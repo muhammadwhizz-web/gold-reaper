@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Show your paper results
+    url: https://github.com/muhammadwhizz-web/gold-reaper/discussions
+    about: Running the bot in paper mode? Post your daily results in Discussions — win or lose, that is the culture here.
+  - name: Documentation
+    url: https://github.com/muhammadwhizz-web/gold-reaper/tree/main/docs
+    about: Getting started, troubleshooting, strategy, risk contract, diagnosis.

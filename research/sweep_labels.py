@@ -18,9 +18,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from core.indicators import atr  # noqa: E402
-from features.store import FeatureStore  # noqa: E402
 from features.build_features import triple_barrier  # noqa: E402
+from features.store import FeatureStore  # noqa: E402
 from ml.train_meta import metrics  # noqa: E402
 
 

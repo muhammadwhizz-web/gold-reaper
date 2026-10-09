@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose an improvement. Walk-forward evidence is welcome; hype is not.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What can you not do today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope checks
+      options:
+        - label: This does not promise profits or add hype language (brand contract, docs/BRAND.md)
+        - label: If it changes strategy/risk behavior, it can be walk-forward validated

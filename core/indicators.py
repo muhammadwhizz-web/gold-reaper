@@ -20,12 +20,12 @@ def rsi(series: pd.Series, period: int = 14) -> pd.Series:
 
 
 def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    h, l, c = df["high"], df["low"], df["close"]
+    h, low_v, c = df["high"], df["low"], df["close"]
     prev_c = c.shift(1)
     tr = pd.concat([
-        (h - l),
+        (h - low_v),
         (h - prev_c).abs(),
-        (l - prev_c).abs(),
+        (low_v - prev_c).abs(),
     ], axis=1).max(axis=1)
     return tr.ewm(alpha=1 / period, adjust=False).mean()
 

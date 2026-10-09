@@ -61,3 +61,22 @@ https://muhammadwhizz-web.github.io/gold-reaper/
 
 Requires Pages enabled once: **Settings → Pages → Source: GitHub Actions.**
 After the first deploy, the README `▶ LIVE DEMO` badge resolves automatically.
+
+## Deterministic artifact pipeline (no agg required)
+
+`demo/make_cast.py` writes the asciinema-v2 `.cast` directly from the demo
+(stdout intercepted, seeded, wall-clock rhythm preserved), and
+`demo/render_gif.py` replays it into a branded GIF with an outro card —
+Pillow only, no external tools. `ffmpeg` finishes the set:
+
+```bash
+python demo/make_cast.py       # demo/gold-reaper-demo.cast
+python demo/render_gif.py      # demo/gold-reaper-demo.gif
+ffmpeg -i demo/gold-reaper-demo.gif -movflags +faststart -pix_fmt yuv420p \
+       demo/gold-reaper-demo.mp4
+```
+
+Windows: `powershell -ExecutionPolicy Bypass -File demo\record_demo.ps1`
+(uses asciinema/agg when installed, falls back to the deterministic renderer).
+Committed artifacts: `demo/gold-reaper-demo.{cast,gif,mp4}` — regenerated
+byte-identically every time.

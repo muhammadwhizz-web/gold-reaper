@@ -6,7 +6,7 @@ Every number the bot lives and dies by. Edit .env to override.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -80,7 +80,12 @@ class Config:
     atr_period: int = _i("ATR_PERIOD", 14)
     min_adx: float = _f("MIN_ADX", 24.0)               # trend strength gate (walk-forward)
     sl_atr_mult: float = _f("SL_ATR_MULT", 1.2)
-    tp_atr_mult: float = _f("TP_ATR_MULT", 3.2)
+    tp_r: float = _f("TP_R", 2.0)                      # TP distance in R (v2.3 walk-forward)
+    tp_atr_mult: float = _f("TP_ATR_MULT", 2.4)        # legacy alias (2.0R x 1.2 ATR)
+    entry_hours_utc: tuple = tuple(                    # v2.3 hardened hunt window
+        int(x) for x in os.getenv("ENTRY_HOURS_UTC", "12,13").split(",")
+        if x.strip().isdigit())
+    meanrev_vol_max: float = _f("MEANREV_VOL_MAX", 0.4)  # ATR-rank ceiling for meanrev
     breakeven_at_r: float = _f("BREAKEVEN_AT_R", 1.0)
     trail_start_r: float = _f("TRAIL_START_R", 1.5)
     trail_atr_mult: float = _f("TRAIL_ATR_MULT", 1.2)

@@ -25,7 +25,7 @@ class PaperBroker(BrokerBase):
         self.cfg = cfg
         self.balance_val: float = cfg.starting_balance
         self.positions: dict[str, Position] = {}
-        self._cache: tuple[str, dict[str, object]] | None = None
+        self._cache: tuple[str, dict[str, pd.DataFrame]] | None = None
         self._cache_ts: float = 0.0
 
     # ------------------------------------------------------------- data
@@ -44,7 +44,7 @@ class PaperBroker(BrokerBase):
         df.index.name = "time"
         return df
 
-    def candles(self, timeframe: str, count: int) -> dict[str, object]:
+    def candles(self, timeframe: str, count: int) -> dict[str, pd.DataFrame]:
         import time as _t
         now = _t.time()
         if self._cache and now - self._cache_ts < 120:

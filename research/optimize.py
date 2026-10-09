@@ -49,14 +49,14 @@ def main() -> int:
     grid = list(itertools.product(
         [22, 24, 26],         # min_adx
         [1.2, 1.4, 1.6],      # sl_atr_mult
-        [2.4, 2.8, 3.2],      # tp_atr_mult
+        [1.8, 2.0, 2.2, 2.667],  # tp_r (TP in R multiples)
         [1.0, 1.5],           # breakeven_at_r
     ))
     cprint(f"[*] sweeping {len(grid)} configs x {FOLDS} folds...", YELLOW)
 
     rows = []
-    for adx_min, sl_m, tp_m, be_r in grid:
-        cfg = replace(base, min_adx=adx_min, sl_atr_mult=sl_m, tp_atr_mult=tp_m,
+    for adx_min, sl_m, tp_r, be_r in grid:
+        cfg = replace(base, min_adx=adx_min, sl_atr_mult=sl_m, tp_r=tp_r,
                       breakeven_at_r=be_r)
         fold_pnls = []
         total_trades = 0
@@ -65,7 +65,7 @@ def main() -> int:
             fold_pnls.append(r["net_pnl"])
             total_trades += r["trades"]
         rows.append({
-            "adx": adx_min, "sl": sl_m, "tp": tp_m, "be": be_r,
+            "adx": adx_min, "sl": sl_m, "tp_r": tp_r, "be": be_r,
             "trades": total_trades,
             "worst_fold": min(fold_pnls),
             "mean_fold": sum(fold_pnls) / len(fold_pnls),
@@ -87,13 +87,13 @@ def main() -> int:
 
     best = rdf.iloc[0]
     cprint(f"\n[★] CHOSEN: adx>={best['adx']:.0f} sl={best['sl']:.1f}xATR "
-           f"tp={best['tp']:.1f}xATR be={best['be']:.1f}R | worst fold "
+           f"tp={best['tp_r']:.2f}R be={best['be']:.1f}R | worst fold "
            f"{best['worst_fold']:+,.0f} | {best['positive_folds']}/4 folds green",
            GREEN)
 
     # final full-period verdict with chosen config
     final_cfg = replace(base, min_adx=float(best["adx"]), sl_atr_mult=float(best["sl"]),
-                        tp_atr_mult=float(best["tp"]), breakeven_at_r=float(best["be"]))
+                        tp_r=float(best["tp_r"]), breakeven_at_r=float(best["be"]))
     cprint("\n[*] full-period verdict with chosen config:", YELLOW)
     run_backtest(h1, h4, verbose=True, cfg=final_cfg)
 

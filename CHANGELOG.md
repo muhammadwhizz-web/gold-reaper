@@ -2,6 +2,32 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [2.3] — 2026-10-09 — signal diagnosis + hardened config (VISUAL/SIGNAL SUPREMACY)
+
+### Fixed (the signal, honestly)
+- Published walk-forward losses diagnosed in `research/diagnose.py` +
+  `docs/DIAGNOSIS.md`: RANGE-regime mean-reversion bled -526 (32 trades),
+  overlap hours 14-15 UTC bled -1,010 combined, trend module fired into the
+  wrong hours. SL-first fill assumption verified NOT the problem (TP-first
+  rerun identical). Cost model verified realistic but not the root cause.
+- 20y daily ML probe: mean AUC 0.528 -> tabular ML confirmed dead as a
+  hard gate (second independent confirmation).
+
+### Changed (strategy, walk-forward promoted: worst fold -663 -> -112)
+- Hunt window tightened to 12:00-13:59 UTC (`ENTRY_HOURS_UTC=12,13`)
+- TP retuned 2.67R -> 2.0R (`TP_R=2.0`, SL unchanged 1.2xATR)
+- Mean-reversion ATR-rank ceiling 0.40 (`MEANREV_VOL_MAX=0.4`)
+- `research/backtest_apex.py` now publishes 5 modes incl. v3 hardened:
+  net -970 -> +34 (11 trades, worst fold -663 -> -112); APEX-X v3 +356
+  on 8 trades (PF 2.57, sample too small to claim an edge - documented)
+- Live ensemble mirrors v3 gates exactly (hours, vol ceiling, TP ladder)
+
+### Added
+- `research/diagnose.py` (9-question microscope), `research/tune_v3.py`
+  (worst-fold-first fix tuner), `research/track_record.py` +
+  `docs/TRACK_RECORD.md` (append-only paper ledger)
+- `docs/DIAGNOSIS.md` - full honest loss analysis
+
 ## [2.1] — 2026-10-09 — professional rebrand
 
 ### Changed

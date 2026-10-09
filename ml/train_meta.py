@@ -30,8 +30,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from features.store import FeatureStore  # noqa: E402
 from features.build_features import build_features  # noqa: E402
+from features.store import FeatureStore  # noqa: E402
 
 MODELS_DIR = ROOT / "ml" / "models"
 PROD_MODEL = MODELS_DIR / "meta_production.joblib"
@@ -144,7 +144,7 @@ def metrics(y: np.ndarray, p: np.ndarray, threshold: float = 0.65) -> dict:
     pred = (p >= threshold).astype(int)
     taken = int(pred.sum())
     tp = int(((pred == 1) & (y == 1)).sum())
-    fp = int(((pred == 1) & (y == 0)).sum())
+    fp = int(((pred == 1) & (y == 0)).sum())  # noqa: F841 (kept for recall audit)
     return {
         "auc": round(auc(y, p), 4),
         "n": len(y),
@@ -178,7 +178,7 @@ def main(retrain: bool = True) -> int:
 
     mm = MetaModel()
     mm.columns = cols
-    info = mm.train(Xtr, ytr, Xva, yva)
+    mm.train(Xtr, ytr, Xva, yva)
     p_va = mm.predict_proba(Xva)
     p_te = mm.predict_proba(Xte)
     m_va = metrics(yva, p_va)

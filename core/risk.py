@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
 
-from core.config import CONFIG
+from core.config import CONFIG, Config
 from core.sessions import now_utc
 
 
@@ -41,7 +40,7 @@ class RiskState:
 
 
 class RiskManager:
-    def __init__(self, cfg: CONFIG.__class__ | None = None) -> None:
+    def __init__(self, cfg: Config | None = None) -> None:
         self.cfg = cfg or CONFIG
         self.state = RiskState()
         self.state.balance = self.cfg.starting_balance

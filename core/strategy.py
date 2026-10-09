@@ -22,7 +22,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from core.config import CONFIG
+from core.config import CONFIG, Config
 from core.indicators import adx, atr, bearish_body, bullish_body, ema, rsi
 from core.sessions import in_blackout, session_of
 
@@ -58,7 +58,7 @@ class ReaperX:
 
     name = "REAPER-X"
 
-    def __init__(self, cfg: CONFIG.__class__ | None = None) -> None:
+    def __init__(self, cfg: Config | None = None) -> None:
         self.cfg = cfg or CONFIG
         self.state = StrategyState()
 
@@ -98,6 +98,9 @@ class ReaperX:
         window = c.session_windows.get(sess)
         if window is None:
             return None
+        # v2.3 hardened hunt window (walk-forward: hours 14-15 UTC bleed)
+        if c.entry_hours_utc and ts.hour not in c.entry_hours_utc:
+            return None
 
         # US-data blackout windows
         if in_blackout(ts, c.blackout_hours_utc):
@@ -131,7 +134,7 @@ class ReaperX:
             if bullish_body(h1.iloc[i]) and rsi_v >= rsi_prev:
                 entry = px
                 sl = entry - c.sl_atr_mult * atr_v
-                tp = entry + c.tp_atr_mult * atr_v
+                tp = entry + c.tp_r * c.sl_atr_mult * atr_v
                 sig = Signal("LONG", entry, sl, tp, atr_v,
                              f"bias-up pullback EMA20 rsi {rsi_v:.1f} adx {adx_v:.0f}",
                              sess, ts, rsi_v, adx_v)
@@ -140,7 +143,7 @@ class ReaperX:
             if bearish_body(h1.iloc[i]) and rsi_v <= rsi_prev:
                 entry = px
                 sl = entry + c.sl_atr_mult * atr_v
-                tp = entry - c.tp_atr_mult * atr_v
+                tp = entry - c.tp_r * c.sl_atr_mult * atr_v
                 sig = Signal("SHORT", entry, sl, tp, atr_v,
                              f"bias-dn pullback EMA20 rsi {rsi_v:.1f} adx {adx_v:.0f}",
                              sess, ts, rsi_v, adx_v)
