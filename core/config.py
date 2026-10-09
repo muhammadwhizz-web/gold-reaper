@@ -40,7 +40,7 @@ class Config:
     bot_name: str = "GOLD-REAPER"
 
     # ── broker ───────────────────────────────────────────────────────
-    broker: str = os.getenv("BROKER", "MT5").upper()          # MT5 (Exness) | BITGET | PAPER
+    broker: str = os.getenv("BROKER", "PAPER").upper()         # MT5 (Exness) | BITGET | PAPER
     paper: bool = _b("PAPER_MODE", True)                       # ALWAYS default to paper!
 
     # Exness / MetaTrader 5

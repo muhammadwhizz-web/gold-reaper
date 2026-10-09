@@ -38,7 +38,7 @@ jobs:
           close = pd.Series(np.cumsum(rng.normal(0, 3, n)) + 2000)
           df = pd.DataFrame({"open": close.shift(1).fillna(close.iloc[0]),
                              "high": close + 4, "low": close - 4, "close": close,
-                             "volume": 1000}, index=pd.date_range("2024-01-01", periods=n, freq="1h", utc=True))
+                             "volume": 1000}, index=pd.date_range("2024-01-01", periods=n, freq="1h", tz="UTC"))
           assert not adx(df).isna().all(), "ADX broken"
           s = ReaperX()
           sig = s.evaluate(df, df.resample("4h").agg({"open":"first","high":"max","low":"min","close":"last"}).dropna(), df.index[-1].to_pydatetime())

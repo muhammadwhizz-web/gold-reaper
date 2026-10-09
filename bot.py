@@ -147,10 +147,13 @@ class GoldReaperBot:
         self._last_bar_ts = last_bar
 
         # 2. equity sync
+        eq = None
         try:
             eq = self.broker.equity()
             if eq > 0:
                 self.risk.update_equity(eq)
+            else:
+                eq = None
         except Exception:  # noqa: BLE001
             pass
 
@@ -180,7 +183,7 @@ class GoldReaperBot:
             return
 
         # 7. execute
-        self._execute(sig, eq if 'eq' in dir() else self.risk.state.equity)
+        self._execute(sig, eq if eq else self.risk.state.equity)
 
     # ------------------------------------------------------------ execution
     def _execute(self, sig: Signal, equity: float) -> None:
