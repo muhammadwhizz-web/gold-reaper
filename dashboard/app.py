@@ -266,6 +266,62 @@ def _equity_history_from_fills(points: int = 120) -> list[float] | None:
     return [round(base, 2)] * (points - len(walk)) + walk
 
 
+def _equity_marks(limit: int = 60) -> list[dict]:
+    """Session-boundary equity snapshots the bot appended to
+    data/equity_marks.csv (ts, equity, session). Honest real snapshots
+    only - a missing or unreadable file simply yields []."""
+    f = DATA / "equity_marks.csv"
+    if not f.exists():
+        return []
+    try:
+        rows = list(csv.DictReader(f.open(newline="", encoding="utf-8")))
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[dict] = []
+    for r in rows:
+        try:
+            out.append({"ts": str(r.get("ts", "")),
+                        "eq": float(r.get("equity", 0)),
+                        "session": str(r.get("session", ""))})
+        except (TypeError, ValueError):
+            continue
+    return out[-limit:]
+
+
+def _equity_history_live(points: int = 120) \
+        -> tuple[list[float] | None, list[str] | None, list[int] | None]:
+    """Time-ordered live equity curve merged from two honest sources:
+      - realized fills (audit.jsonl 'fill' events, pnl steps from base)
+      - session-boundary marks (equity_marks.csv, absolute snapshots)
+    Returns (values, times, mark_idx). times is a parallel HH:MM label
+    array (None when no marks exist -> console keeps its index axis);
+    mark_idx lists which indices are session marks (chart dot overlay)."""
+    marks = _equity_marks()
+    fills = _fills()
+    if not marks:
+        return (_equity_history_from_fills() if fills else None, None, None)
+    events: list[tuple[str, float, bool]] = \
+        [(m["ts"], m["eq"], True) for m in marks]
+    base = _start_balance()
+    if base is None:
+        base = 10_000.0 - sum(f["pnl"] for f in fills)
+    eq = base
+    for f in fills:
+        eq += f["pnl"]
+        events.append((f["ts"], round(eq, 2), False))
+    events.sort(key=lambda e: e[0])
+    tail = events[-points:]
+    vals = [round(e[1], 2) for e in tail]
+    times: list[str] = []
+    for e in tail:
+        try:
+            times.append(datetime.fromisoformat(e[0]).strftime("%H:%M"))
+        except (TypeError, ValueError):
+            times.append("")
+    mark_idx = [i for i, e in enumerate(tail) if e[2]]
+    return (vals, times, mark_idx)
+
+
 def _flat_equity(value: float, points: int = 120) -> list[float]:
     """Honest flat curve for a live account with zero realized fills."""
     try:
@@ -282,7 +338,7 @@ def state_payload() -> dict:
         try:
             risk = json.loads(risk_file.read_text())
             eq = risk.get("equity", 0)
-            hist = _equity_history_from_fills()
+            hist, eq_times, mark_idx = _equity_history_live()
             hb = _heartbeat_telemetry()
             fresh_regime = hb.get("regime") if (hb and hb["fresh"]) else None
             fresh_session = hb.get("session") if (hb and hb["fresh"]) else None
@@ -300,8 +356,11 @@ def state_payload() -> dict:
                 "latched": risk.get("latched", False),
                 "wins": risk.get("wins", 0),
                 "losses": risk.get("losses", 0),
-                "equity_source": "fills" if hist else "flat",
+                "equity_source": ("marks+fills" if eq_times
+                                  else ("fills" if hist else "flat")),
                 "equity_history": hist or _flat_equity(eq),
+                "equity_times": eq_times,
+                "equity_mark_idx": mark_idx,
                 # open position from the bot's own heartbeat snapshot —
                 # shown even when the heartbeat is stale (it is the last
                 # real state the bot published; the bot chip flags staleness)
@@ -337,6 +396,8 @@ def state_payload() -> dict:
         "wins": 1,
         "losses": 0,
         "equity_history": eq_hist,
+        "equity_times": None,
+        "equity_mark_idx": None,
         "position": {
             "side": "LONG", "size_oz": 0.028, "entry": 2418.60,
             "sl": 2417.90, "tp": 2431.20,

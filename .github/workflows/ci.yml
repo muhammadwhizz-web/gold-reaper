@@ -250,6 +250,30 @@ jobs:
                          'journal exported'):
               assert marker in html, f"missing marker: {marker}"
           print("v2.8 OK | toasts + j/k nav + regime sequence + end chip")
+          # v2.9 contracts: session equity marks · transport LED · e-export · r-band
+          import csv as _csv
+          da.DATA = tmp  # hermetic marks source
+          mf = tmp / "equity_marks.csv"
+          with mf.open("w", newline="") as fh:
+              w = _csv.writer(fh)
+              w.writerow(["ts", "equity", "session"])
+              w.writerow(["2026-10-09T12:00:00+00:00", "1000.00", "london"])
+              w.writerow(["2026-10-09T13:00:00+00:00", "1012.50", "overlap"])
+          vals, times, midx = da._equity_history_live()
+          assert vals and len(vals) >= 2 and len(vals) == len(times)
+          assert 0 in midx and times[0] == "12:00" and times[-1] == "13:00"
+          mf.unlink()
+          v0, t0, m0 = da._equity_history_live()
+          assert t0 is None and m0 is None  # no marks -> legacy axis, no fabrication
+          da.DATA = real_data
+          print("v2.9 server OK | marks merge + honest no-marks fallback")
+          html = open("dashboard/static/index.html", encoding="utf-8").read()
+          for marker in ('id="sled"', 'telemetry reattached', 'polling fallback',
+                         'function exportJournal', 'k === "e"', 'id="rbarWrap"',
+                         'class="rmark', 'equity_mark_idx', 'EQ_MARKS',
+                         'session mark'):
+              assert marker in html, f"missing marker: {marker}"
+          print("v2.9 console OK | transport LED + e-export + r-band + marks axis")
           # static console carries the new contract markers
           html = open("dashboard/static/index.html", encoding="utf-8").read()
           for marker in ('id="ledgerHeat"', 'function renderHeat',

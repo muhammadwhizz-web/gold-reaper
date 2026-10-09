@@ -33,7 +33,15 @@ running-peak drawdown shading, position card fed by the bot's heartbeat
 position snapshot (BE and TRAIL chips, age tooltip), trades table with
 R-multiple column, CSV export and a click-through trade detail drawer,
 trade analytics (profit factor, win rate, expectancy, max drawdown, PnL
-distribution histogram, underwater curve, per-regime split), hunt-window
+distribution histogram, underwater curve, per-regime split), an
+r-multiple band inside every trade drawer (-1R stop .. entry .. +2R
+target with a glowing marker at the trade's own R), session-boundary
+equity marks on the curve (the bot snapshots real equity at every
+session transition into `data/equity_marks.csv`; the console switches
+to a real HH:MM UTC axis with a glowing dot per mark — the live curve
+moves between fills, honestly), a transport LED in the stream header
+(`PUSH` when SSE drives state, fallback label while polling — drops and
+rejoins toast once each), hunt-window
 clock with next-3-windows countdown (mirrored in the browser-tab title,
 with a canvas-drawn favicon LED: pulsing green while the window is open,
 amber under standby, red offline), 24 h session map with a live UTC cursor,
@@ -42,9 +50,9 @@ news radar with high-impact countdowns, a 14-day paper-ledger heat strip
 `data/heartbeat.json` — stale heartbeat shows an amber "bot stale" chip and
 honest awaiting states instead of fabricated regime/broker data), a real
 kill-switch, a footer version chip (`state.version`, sourced from
-pyproject), and a matrix rain canvas. Keyboard: `s`/`p` standby · `l` log ·
-`d` demo · `?` shortcut help · `Esc` closes drawer/overlay · click a trades
-row for its detail drawer.
+pyproject), and a matrix rain canvas. Keyboard: `s`/`p` standby · `j`/`k` journal ·
+`o` open drawer · `e` export csv · `l` log · `d` demo · `?` shortcut help ·
+`Esc` closes drawer/overlay · click a trades row for its detail drawer.
 
 The kill-switch is server-side: the top-bar **standby** button (or `POST
 /api/standby {"on": true}`) writes `data/standby.flag`; the running bot

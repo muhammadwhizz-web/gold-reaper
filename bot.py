@@ -37,7 +37,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-VERSION = "2.8.0"
+VERSION = "2.9.0"
 HEARTBEAT_FILE = ROOT / "data" / "heartbeat.json"
 PID_FILE = ROOT / "data" / "bot.pid"
 STANDBY_FILE = ROOT / "data" / "standby.flag"
@@ -198,6 +198,30 @@ class MetaModelServer:
 import json  # noqa: E402  (kept after imports used above)
 
 
+def _append_equity_mark(equity: float, session: str | None) -> None:
+    """Session-boundary equity snapshot (append-only CSV).
+
+    Written once per session transition so the live equity curve gains real
+    points between fills - the curve then shows the account drifting with
+    realized equity instead of staying flat until a position closes.
+    Honest by construction: only real broker equity at real timestamps.
+    """
+    if equity is None or equity <= 0:
+        return
+    f = ROOT / "data" / "equity_marks.csv"
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        new = not f.exists()
+        with f.open("a", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            if new:
+                w.writerow(["ts", "equity", "session"])
+            w.writerow([now_utc().isoformat(), f"{float(equity):.2f}",
+                        session or ""])
+    except OSError:
+        log.warning("equity mark append failed", exc_info=True)
+
+
 def _position_snapshot(broker) -> dict | None:
     """Open-position snapshot for the console's position card.
     None = flat. Mirrors the dashboard's state.position contract
@@ -282,6 +306,7 @@ class ReaperApexBot:
         self._last_price: float | None = None
         self._last_regime: dict | None = None
         self._last_session: str | None = None
+        self._last_mark_session: str | None = None
         self._mode = "PAPER" if (getattr(cfg, "paper", False)
                                  or cfg.broker == "PAPER") else cfg.broker
 
@@ -453,6 +478,11 @@ class ReaperApexBot:
                 self.apex.state.balance = max(self.apex.state.balance, eq) \
                     if self.apex.state.balance <= 0 else eq
                 self.risk.update_equity(eq)
+                # session-boundary mark: one snapshot per session transition
+                sess = session_of(ts)
+                if sess != self._last_mark_session:
+                    self._last_mark_session = sess
+                    _append_equity_mark(eq, sess)
         except Exception:  # noqa: BLE001
             pass
 

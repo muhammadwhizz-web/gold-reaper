@@ -132,6 +132,11 @@ jobs:
               "block_pnl": 23.41, "block_target": 20, "block_key": "2026-10-09T12",
               "recovery": False, "latched": False, "wins": 1, "losses": 0,
               "equity_history": hist,
+              "equity_source": "marks+fills",
+              "equity_times": ["%02d:%02d" % (12 + (i * 5) // 60, (i * 5) % 60)
+                               for i in range(len(hist))],
+              "equity_mark_idx": [0, 12, 24, 36, 48, 60, 72, 84, 96, 108,
+                                  len(hist) - 1],
               "position": {"side": "LONG", "size_oz": 0.028, "entry": 2418.60,
                            "sl": 2417.90, "tp": 2431.20, "opened": "12:04:33 UTC",
                            "be": True, "trail": True, "age_h": 1.7},
@@ -145,7 +150,7 @@ jobs:
                   {"name": "Paper", "state": "up", "latency_ms": 1}],
               "streak": 1, "hunt_window": "12-14 UTC",
               "geometry": "SL 1.2xATR \u00b7 TP 2.0R \u00b7 risk 1%",
-              "version": "v2.8.0"},
+              "version": "v2.9.0"},
               "trades": trades, "track_record": track, "metrics": metrics}
           # news radar mock — informational countdowns (client renders them)
           mock_news = {"fetched_at": "2026-10-09T14:02:22+00:00", "events": [

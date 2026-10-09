@@ -2,6 +2,43 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [2.9] — 2026-10-10 — session equity marks · transport LED · r-band drawer
+
+### Added
+- **Session-boundary equity marks**: the bot appends one real equity
+  snapshot per session transition to `data/equity_marks.csv`
+  (append-only; `bot._append_equity_mark`). The dashboard merges marks
+  with realized fills into a time-ordered live curve
+  (`app._equity_history_live`) and the console switches from a bar-index
+  axis to a real HH:MM UTC axis, drawing a glowing dot on every session
+  mark (tooltip: "· session mark"). The live equity curve finally moves
+  between fills — honestly: only real broker equity at real timestamps,
+  no interpolation, no fabrication. Without marks the console falls back
+  to the legacy index axis; `state.equity_source` now reports
+  `marks+fills` / `fills` / `flat` and the equity chip explains itself.
+- **Transport LED**: the stream panel header shows which telemetry
+  transport is winning — `PUSH` (green outline) once SSE delivers, or
+  the plain fallback label. Losing the link drops it to poll with a
+  "telemetry link lost · polling fallback" amber toast; reconnection
+  fires "telemetry reattached · push restored" once (dedup guard, no
+  toast spam while EventSource retries).
+- **R-multiple band in the trade drawer**: every drawer now renders the
+  trade's R multiple on a -1.5R..+3.2R scale — hatched loss zone left of
+  entry, ticks at entry and +2R target, a glowing marker at the trade's
+  own R (green wins / red losses, value chip above). Journal data that
+  was already on the wire, finally visualized.
+- **`e` shortcut**: exports the journal CSV from the keyboard (same path
+  as the export button); footer hint and `?` help overlay updated.
+
+### Changed
+- Console: `updateEqChart` accepts the optional time axis + mark indices;
+  tooltip titles read "HH:MM UTC" instead of "bar N" when marks exist.
+- Pages mock replays the v2.9 contract (time axis + mark dots) so the
+  demo shows the full layer; CI hermetic checks assert the marks merge,
+  the honest no-marks fallback, and all new console markers.
+- `.tfill` hatch opacity doubled (0.022 → 0.045) so the journal's dead
+  space reads as intentional texture instead of a black hole.
+
 ## [2.8] — 2026-10-09 — toast feedback · j/k journal nav · regime sequence
 
 ### Added

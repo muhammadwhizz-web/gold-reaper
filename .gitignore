@@ -32,3 +32,6 @@ data/heartbeat.json
 
 # console kill-switch runtime flag
 data/standby.flag
+
+# session-boundary equity marks (runtime, append-only)
+data/equity_marks.csv
