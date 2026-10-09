@@ -2,6 +2,39 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [3.1] — 2026-10-10 — session intelligence
+
+### Added
+- **By-session P&L rollup**: the analytics panel gains a "by session ·
+  net / fills / win rate" split, aggregated client-side from the
+  journal — each session gets a glowing inline bar scaled by |net|
+  (green profit / red loss), fill count, signed net, and win rate.
+  This is the repo's thesis rendered as data: the overlap window is
+  supposed to be the one that pays, and now the console shows whether
+  it actually does. Honest empty state ("no session attribution yet")
+  before the first close.
+- **Live underwater from the real walk**: with zero realized fills the
+  metrics payload has no underwater series — but the live equity walk
+  (session marks + fills) IS real data, so the analytics underwater now
+  derives honestly from the walk (running-peak dd%) instead of showing
+  nothing. Only when `equity_source` is non-flat and the walk actually
+  moves; a tooltip states the derivation ("derived from the live
+  equity walk (session marks + fills)"). A flat $1,000 account still
+  shows nothing — nothing happened.
+- **Journal session chips**: the trades table's session cell renders as
+  a bordered tag — `LONDON_NY_OVERLAP` wears the brand green, London
+  cyan, NY amber, everything else dim. The hunt window is scannable at
+  a glance in a wall of rows.
+
+### Changed
+- Styling pass: drawer stat cells highlight on hover; rollup bars and
+  session chips live inside the existing terminal palette (no new
+  colors beyond the console's established green/red/cyan/amber set).
+- Pages mock replays the v3.1 contract (session rollup is computed from
+  trades the mock already ships); CI hermetic checks assert the new
+  markers (`mxSessions`, `renderSessions`, `sessTag`, `walkToUnderwater`,
+  `LAST_STATE`, `ss-overlap`, `sbar`).
+
 ## [3.0] — 2026-10-10 — live-curve completion · operator ergonomics
 
 ### Added

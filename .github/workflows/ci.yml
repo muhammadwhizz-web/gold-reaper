@@ -283,6 +283,14 @@ jobs:
                          '" · Δ "', 'button:focus-visible'):
               assert marker in html, f"missing marker: {marker}"
           print("v3.0 console OK | crosshair + mark toast + walk delta + backoff + copy json")
+          # v3.1 contracts: by-session rollup · walk-derived live underwater · session chips
+          for marker in ('id="mxSessions"', 'function renderSessions',
+                         'function sessTag', '"ss-overlap"', 'class="sbar ',
+                         'function walkToUnderwater', 'LAST_STATE',
+                         'by session · net / fills / win rate',
+                         'derived from the live equity walk'):
+              assert marker in html, f"missing marker: {marker}"
+          print("v3.1 console OK | session rollup + walk underwater + session chips")
           # static console carries the new contract markers
           html = open("dashboard/static/index.html", encoding="utf-8").read()
           for marker in ('id="ledgerHeat"', 'function renderHeat',

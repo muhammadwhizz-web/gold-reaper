@@ -33,7 +33,11 @@ running-peak drawdown shading, position card fed by the bot's heartbeat
 position snapshot (BE and TRAIL chips, age tooltip), trades table with
 R-multiple column, CSV export and a click-through trade detail drawer,
 trade analytics (profit factor, win rate, expectancy, max drawdown, PnL
-distribution histogram, underwater curve, per-regime split), an
+distribution histogram, underwater curve, per-regime split, and a
+by-session rollup — net / fills / win rate per trading session with a
+glowing bar scaled by |net|; with zero fills the live underwater derives
+honestly from the equity walk when it actually moves), session-tag chips
+in the journal (overlap green / london cyan / ny amber), an
 r-multiple band inside every trade drawer (-1R stop .. entry .. +2R
 target with a glowing marker at the trade's own R), session-boundary
 equity marks on the curve (the bot snapshots real equity at every

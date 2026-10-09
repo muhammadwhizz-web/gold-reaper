@@ -250,7 +250,7 @@ Going live later: `BROKER=MT5` (or `BITGET`) + `PAPER_MODE=false` in `.env`
 | Layer | Command | What you get |
 |---|---|---|
 | Terminal | `python demo/terminal_demo.py` | boot sequence, matrix overture, deterministic simulated hunt with fill + protective moves + session summary |
-| Web | `python dashboard/app.py` → :8080 | equity curve, regime + radar, gauges, position card, sortable trades, SSE log tail, broker LEDs, keyboard shortcuts (`s` `p` `j` `k` `o` `c` `e` `l` `d`) — attaches to a live bot when present, mock session otherwise |
+| Web | `python dashboard/app.py` → :8080 | equity curve, regime + radar, gauges, position card, sortable trades, per-session P&L rollup, SSE log tail, broker LEDs, keyboard shortcuts (`s` `p` `j` `k` `o` `c` `e` `l` `d`) — attaches to a live bot when present, mock session otherwise |
 | Static | [▶ LIVE DEMO](https://muhammadwhizz-web.github.io/gold-reaper/) | backend-free GitHub Pages build, works on mobile |
 
 Record your own: `bash demo/record_demo.sh` (or `demo/record_demo.ps1` on
