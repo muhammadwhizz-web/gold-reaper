@@ -134,7 +134,7 @@ jobs:
               "equity_history": hist,
               "position": {"side": "LONG", "size_oz": 0.028, "entry": 2418.60,
                            "sl": 2417.90, "tp": 2431.20, "opened": "12:04:33 UTC",
-                           "be": True},
+                           "be": True, "trail": True, "age_h": 1.7},
               "heartbeat": None, "standby": False, "price": None,
               "session": "london/ny overlap",
               "regime": {"name": "TREND_UP", "confidence": 0.71, "engine": "rules"},

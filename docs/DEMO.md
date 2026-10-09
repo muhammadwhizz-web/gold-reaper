@@ -27,14 +27,16 @@ python dashboard/app.py          # http://localhost:8080
 Auto-detects a running bot: if `data/apex_risk.json` exists it renders live
 state; otherwise a seeded mock session. Includes SSE log tail (seeds recent
 audit history, then tails live), equity curve with running-peak drawdown
-shading, position card, trades table with R-multiple column and CSV export,
+shading, position card fed by the bot's heartbeat position snapshot (BE and
+TRAIL chips, age tooltip), trades table with R-multiple column and CSV export,
 trade analytics (profit factor, win rate, expectancy, max drawdown, PnL
 distribution histogram, underwater curve, per-regime split), hunt-window
-clock with next-3-windows countdown, 24 h session map with a live UTC
-cursor, news radar with high-impact countdowns, bot-liveness LED (from
-`data/heartbeat.json` — stale heartbeat shows an amber "bot stale" chip and
-honest awaiting states instead of fabricated regime/broker data), a real
-kill-switch, and a matrix rain canvas.
+clock with next-3-windows countdown (mirrored in the browser-tab title),
+24 h session map with a live UTC cursor, news radar with high-impact
+countdowns, a 14-day paper-ledger heat strip (bar height = |net|, color =
+sign), bot-liveness LED (from `data/heartbeat.json` — stale heartbeat shows
+an amber "bot stale" chip and honest awaiting states instead of fabricated
+regime/broker data), a real kill-switch, and a matrix rain canvas.
 
 The kill-switch is server-side: the top-bar **standby** button (or `POST
 /api/standby {"on": true}`) writes `data/standby.flag`; the running bot

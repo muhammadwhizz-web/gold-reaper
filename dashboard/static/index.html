@@ -184,6 +184,7 @@ body.demo #eqBody { height: 420px; }
   font-size: 10px; letter-spacing: 1.5px; color: var(--cyan);
   border: 1px solid rgba(0,217,255,0.5); padding: 1px 7px;
 }
+.bechip.trail { color: var(--amber); border-color: rgba(255,191,0,0.5); }
 .posstats { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; margin-top: 9px; }
 .posstats .k { color: var(--dim); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; display: block; }
 .posstats .v { color: var(--text); }
@@ -223,6 +224,10 @@ body.demo #eqBody { height: 420px; }
 .scroll::-webkit-scrollbar-thumb { background: #1A2422; border-radius: 3px; }
 .scroll::-webkit-scrollbar-thumb:hover { background: #2A3835; }
 .tscroll { max-height: 288px; }
+.tfill {
+  font-size: 9.5px; color: var(--dim); opacity: 0.65;
+  letter-spacing: 0.6px; text-transform: uppercase; margin-top: 8px;
+}
 table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 12px; }
 th, td { text-align: left; padding: 5px 9px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th { color: var(--dim); font-weight: 400; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; padding: 0; border-bottom: 1px solid var(--line); }
@@ -257,6 +262,18 @@ td.dim, .dim td { color: var(--dim); }
 .lrow .lp.neg { color: var(--red); }
 .lrow .lp.zero { color: var(--dim); }
 .ledgerfoot { font-size: 10.5px; color: var(--dim); margin-top: 6px; letter-spacing: 0.4px; }
+/* 14-day ledger heat strip: bar height = |net|, color = sign */
+.heat {
+  display: flex; align-items: flex-end; gap: 3px;
+  height: 30px; margin-top: 10px; padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.heat .hc { flex: 1 1 0; min-width: 4px; opacity: 0.85; transition: opacity 0.2s; }
+.heat .hc:hover { opacity: 1; }
+.heat .hp { background: var(--green); }
+.heat .hn { background: var(--red); }
+.heat .hz { background: var(--line); }
+.heat .hp:last-child, .heat .hn:last-child { box-shadow: 0 0 6px currentColor; }
 #streakNum { color: var(--green); }
 #streakNum.zero { color: var(--dim); }
 #streakNum.neg  { color: var(--red); }
@@ -567,6 +584,7 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
           </tbody>
         </table>
       </div>
+      <div class="tfill" id="tfill">end of journal · append-only · csv export carries the r column</div>
     </section>
 
     <!-- ── row C · right stack ── -->
@@ -585,6 +603,7 @@ th[data-k="pnl"] button, th[data-k="r"] button { justify-content: flex-end; }
       <section class="panel" id="ledger-panel" aria-label="paper track record">
         <h2>paper ledger <span class="hval dim" id="ledgerMeta">append-only</span></h2>
         <div id="ledgerRows"><div class="lrow dim await">reading docs/TRACK_RECORD.md…</div></div>
+        <div class="heat" id="ledgerHeat" hidden aria-hidden="true"></div>
         <div class="ledgerfoot" id="ledgerFoot">every UTC day gets one row · win or lose</div>
       </section>
 
@@ -730,6 +749,7 @@ function huntTick() {
     sub.textContent = "window closes in " + fmtHMS(left);
     fill.style.width = clamp((h - HUNT.start) * 3600 / span * 100, 0, 100).toFixed(1) + "%";
     chip.hidden = false; chip.innerHTML = "window <b>" + fmtHMS(left) + "</b>";
+    document.title = "hunt open · " + fmtHMS(left) + " · GOLD//REAPER";
   } else {
     const next = new Date(now);
     next.setUTCHours(HUNT.start, 0, 0, 0);
@@ -740,11 +760,13 @@ function huntTick() {
     sub.textContent = "until hunt window opens";
     fill.style.width = "0%";
     chip.hidden = false; chip.innerHTML = "next hunt <b>" + fmtHMS(diff) + "</b>";
+    document.title = "hunt in " + fmtHMS(diff) + " · GOLD//REAPER";
     const f = d => d.toLocaleDateString("en-US", { month: "short", day: "2-digit", timeZone: "UTC" });
     $("hclockNext").innerHTML = "next windows (UTC) · " +
       [0, 1, 2].map(k => '<span class="nx">' +
         f(new Date(next.getTime() + k * 864e5)) + " " + pad2(HUNT.start) + ":00</span>").join(" · ");
   }
+  if (document.body.classList.contains("standby")) document.title = "STANDBY · GOLD//REAPER";
 }
 
 /* ─────────────────────────────────────────────── matrix rain ── */
@@ -939,6 +961,7 @@ function renderPosition(p) {
   const box = $("posBody");
   if (!p) {
     box.innerHTML = '<div class="posflat"><span class="led led-standby"></span> flat · scanning</div>';
+    box.removeAttribute("title");
     return;
   }
   const sl = parseNum(p.sl), en = parseNum(p.entry), tp = parseNum(p.tp);
@@ -949,10 +972,14 @@ function renderPosition(p) {
   const pct = v => clamp(((v - lo) / (hi - lo)) * 100, 0, 100).toFixed(2) + "%";
   const mk = (cls, row, price, lab) =>
     `<div class="mk ${cls} ${row}" style="left:${pct(price)}"><span class="mklab">${lab} ${fmtMoney(price)}</span></div>`;
+  const age = Number(p.age_h);
+  box.title = "live snapshot from the bot heartbeat" +
+    (Number.isFinite(age) ? " · open " + age + "h" : "");
   box.innerHTML =
     `<div class="poshead">
        <span class="sidebadge ${String(p.side).toLowerCase() === "long" ? "long" : "short"}">${esc(p.side)}</span>
        ${p.be ? '<span class="bechip" title="stop moved to breakeven">BE</span>' : ""}
+       ${p.trail ? '<span class="bechip trail" title="trailing stop engaged">TRAIL</span>' : ""}
        <span class="dim" style="margin-left:auto;font-size:10px;">${esc(p.opened || "")}</span>
      </div>
      <div class="posstats">
@@ -1093,8 +1120,8 @@ function svgHist(h) {
   }).join("");
   return '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="pnl distribution histogram">' +
     '<line x1="0" y1="' + (H - padB) + '" x2="' + W + '" y2="' + (H - padB) + '" stroke="#1A2422"></line>' + bars +
-    '<text x="0" y="' + (H - 2) + '" fill="#5E6A66" font-size="8.5">' + esc(labels[0] || "") + '</text>' +
-    '<text x="' + W + '" y="' + (H - 2) + '" text-anchor="end" fill="#5E6A66" font-size="8.5">' + esc(labels[labels.length - 1] || "") + '</text></svg>';
+    '<text x="2" y="' + (H - 2) + '" fill="#5E6A66" font-size="8.5">' + esc(labels[0] || "") + '</text>' +
+    '<text x="' + (W - 2) + '" y="' + (H - 2) + '" text-anchor="end" fill="#5E6A66" font-size="8.5">' + esc(labels[labels.length - 1] || "") + '</text></svg>';
 }
 function svgUnderwater(series) {
   const W = 300, H = 110, padT = 8, padB = 14;
@@ -1176,6 +1203,26 @@ function renderLedger(tr) {
   }).join("");
   const days = Number(tr.days) || rows.length;
   $("ledgerMeta").textContent = `${days} day${days === 1 ? "" : "s"} · total ${tr.total_net > 0 ? "+" : ""}${tr.total_net ?? 0} USD`;
+  renderHeat(rows);
+}
+
+/* 14-day heat strip — bar height carries the day's absolute net,
+   color carries the sign. Honest: zero days render flat and dim. */
+function renderHeat(rows) {
+  const box = $("ledgerHeat");
+  if (!box) return;
+  const days = rows.slice(0, 14).reverse(); // oldest -> newest
+  if (!days.length) { box.innerHTML = ""; box.hidden = true; return; }
+  const nets = days.map(r => Math.abs(parseFloat(String(r.net).replace("+", "")) || 0));
+  const max = Math.max(1e-9, ...nets);
+  box.hidden = false;
+  box.innerHTML = days.map(r => {
+    const net = parseFloat(String(r.net).replace("+", "")) || 0;
+    const h = net === 0 ? 3 : Math.max(4, Math.abs(net) / max * 26);
+    const cls = net > 0 ? "hp" : (net < 0 ? "hn" : "hz");
+    return `<div class="hc ${cls}" style="height:${h.toFixed(1)}px" ` +
+      `title="${esc(r.date)} · ${esc(String(r.trades))}t · ${esc(r.net)} USD"></div>`;
+  }).join("");
 }
 async function fetchLedger() {
   try {
@@ -1207,9 +1254,11 @@ function renderState(s) {
     if (hb && hb.fresh) {
       led.className = "led led-up pulse";
       tx.textContent = "bot " + (hb.mode || "") + " · " + hb.age_s + "s ago";
+      $("botchip").title = hb.version ? "reaper " + hb.version : "";
     } else if (hb) {
       led.className = "led led-degraded";
       tx.textContent = "bot stale · " + Math.round(hb.age_s / 60) + "m ago";
+      $("botchip").title = hb.version ? "last heartbeat from reaper " + hb.version : "";
     } else {
       led.className = "led led-standby";
       tx.textContent = "no bot heartbeat";

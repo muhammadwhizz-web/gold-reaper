@@ -37,7 +37,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-VERSION = "2.5.0"
+VERSION = "2.6.0"
 HEARTBEAT_FILE = ROOT / "data" / "heartbeat.json"
 PID_FILE = ROOT / "data" / "bot.pid"
 STANDBY_FILE = ROOT / "data" / "standby.flag"
@@ -198,10 +198,38 @@ class MetaModelServer:
 import json  # noqa: E402  (kept after imports used above)
 
 
+def _position_snapshot(broker) -> dict | None:
+    """Open-position snapshot for the console's position card.
+    None = flat. Mirrors the dashboard's state.position contract
+    (side/size_oz/entry/sl/tp/opened/be) + trail/age_h extras."""
+    try:
+        pos = next(iter(broker.open_positions()), None)
+        if pos is None:
+            return None
+        opened = pos.opened_at
+        if opened.tzinfo is None:  # defensive: naive timestamps -> UTC
+            opened = opened.replace(tzinfo=timezone.utc)
+        return {
+            "side": str(pos.side).upper(),
+            "size_oz": round(float(pos.size_oz), 3),
+            "entry": round(float(pos.entry), 2),
+            "sl": round(float(pos.sl), 2),
+            "tp": round(float(pos.tp), 2),
+            "opened": opened.strftime("%H:%M:%S UTC"),
+            "be": bool(pos.be_moved),
+            "trail": bool(pos.trail_active),
+            "age_h": round(max(0.0, (datetime.now(timezone.utc) - opened)
+                               .total_seconds() / 3600.0), 1),
+        }
+    except Exception:  # noqa: BLE001 — snapshot must never kill the loop
+        return None
+
+
 def _write_heartbeat(mode: str, equity: float | None,
                      price: float | None = None,
                      regime: dict | None = None,
-                     session: str | None = None) -> None:
+                     session: str | None = None,
+                     position: dict | None = None) -> None:
     """Liveness file for watchdog.py, the tray and the dashboard console.
     Carries the last classified telemetry so the console never has to
     fabricate regime/broker state while the bot is silent."""
@@ -218,6 +246,7 @@ def _write_heartbeat(mode: str, equity: float | None,
             "price": price,
             "regime": regime,
             "session": session,
+            "position": position,
             "standby": standby_on(),
         }), encoding="utf-8")
         tmp.replace(HEARTBEAT_FILE)
@@ -335,7 +364,8 @@ class ReaperApexBot:
                 _write_heartbeat(self._mode, self._last_equity,
                                  price=self._last_price,
                                  regime=self._last_regime,
-                                 session=self._last_session)
+                                 session=self._last_session,
+                                 position=_position_snapshot(self.broker))
                 self._maintenance()
                 time.sleep(self.cfg.poll_seconds)
         except KeyboardInterrupt:

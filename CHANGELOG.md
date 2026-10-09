@@ -2,6 +2,35 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [2.6] — 2026-10-09 — heartbeat position snapshot + ledger heat strip
+
+### Added
+- **Open position on the console, for real**: the bot's heartbeat now
+  carries an open-position snapshot (`side/size/entry/sl/tp/opened/be/
+  trail/age_h`), and the live state endpoint passes it through verbatim —
+  the position card finally renders the actual running position (with BE
+  and TRAIL chips and an age tooltip) instead of permanent "flat ·
+  scanning". Stale heartbeats keep showing their last real snapshot; the
+  bot chip already flags staleness. CI asserts the pass-through contract
+  hermetically (fresh snapshot renders, deleted snapshot renders flat).
+- **14-day paper-ledger heat strip**: bar height carries the day's
+  absolute net, color carries the sign, hover reveals date · trades ·
+  net. Renders from the append-only `docs/TRACK_RECORD.md` on both the
+  FastAPI console and the GitHub Pages demo.
+- **Browser-tab countdown**: `document.title` mirrors the hunt clock
+  ("hunt in 03:12:44 · GOLD//REAPER" / "hunt open · 00:47:03" / "STANDBY
+  · GOLD//REAPER") so a background tab still reports the window state.
+- Trades panel gets an "end of journal · append-only" footer line
+  anchoring the panel bottom (previously dead vertical space).
+
+### Fixed (QA round: agent-browser audit of Pages demo + live harness)
+- QA harness: the static payload script tag was never executed
+  (`type="application/json"` is data, not code) — the live-mode harness
+  rendered placeholders; payload is now injected as executable JS.
+- Two pre-existing mypy errors in `dashboard/app.py` (untyped `hist`
+  dict, `float(None)` on adx) — now clean under strict local mypy even
+  though `dashboard/` is outside the CI mypy scope.
+
 ## [2.5] — 2026-10-09 — server-side kill-switch + honest live telemetry
 
 ### Fixed (QA round: agent-browser audit + code review)

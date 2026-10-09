@@ -204,6 +204,24 @@ jobs:
           assert s3["standby"] is True
           assert da.set_standby(False) is False and da.standby_state() is False
           print("kill-switch OK | flag write/clear round-trip")
+          # heartbeat position snapshot -> console position card (no fabrication)
+          import time as _t
+          hb_pos = {"side": "LONG", "size_oz": 0.028, "entry": 2418.6,
+                    "sl": 2417.9, "tp": 2431.2, "opened": "12:04:33 UTC",
+                    "be": True, "trail": False, "age_h": 0.4}
+          da.HEARTBEAT_FILE.write_text(json.dumps({
+              "ts": _t.time(), "iso": "t", "pid": 1, "version": "ci",
+              "mode": "PAPER", "equity": 1000.0, "price": 2418.6,
+              "regime": None, "session": None, "position": hb_pos,
+              "standby": False}))
+          hb = da._heartbeat_telemetry()
+          assert hb and hb["fresh"] and hb["position"]["side"] == "LONG"
+          s4 = da.state_payload()
+          assert s4["position"] == hb_pos  # exact pass-through
+          da.HEARTBEAT_FILE.unlink()
+          s5 = da.state_payload()
+          assert s5["position"] is None  # flat again once the snapshot is gone
+          print("heartbeat position OK | snapshot pass-through verified")
           # news endpoint: honest empty without a cache file
           n0 = da.news_payload()
           assert n0["events"] == [] and "cached" in n0["source"]
@@ -216,6 +234,12 @@ jobs:
           assert n1["events"][0]["min_until"] > 0
           print("news radar OK | parsed", len(n1["events"]), "event(s)")
           da.DATA = real_data
+          # static console carries the new contract markers
+          html = open("dashboard/static/index.html", encoding="utf-8").read()
+          for marker in ('id="ledgerHeat"', 'function renderHeat',
+                         'id="tfill"', 'bechip trail', 'document.title'):
+              assert marker in html, f"missing marker: {marker}"
+          print("static console markers OK | heat strip + trail chip + title")
           PY
 
       - name: Reaper is alive

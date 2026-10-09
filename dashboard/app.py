@@ -112,6 +112,8 @@ def _heartbeat_telemetry() -> dict | None:
             "regime": ({"name": reg.get("regime"),
                         "confidence": conf, "engine": reg.get("engine")}
                        if reg else None),
+            "position": (hb.get("position")
+                         if isinstance(hb.get("position"), dict) else None),
             "standby": bool(hb.get("standby")),
         }
     except Exception:  # noqa: BLE001
@@ -286,7 +288,10 @@ def state_payload() -> dict:
                 "losses": risk.get("losses", 0),
                 "equity_source": "fills" if hist else "flat",
                 "equity_history": hist or _flat_equity(eq),
-                "position": None,
+                # open position from the bot's own heartbeat snapshot —
+                # shown even when the heartbeat is stale (it is the last
+                # real state the bot published; the bot chip flags staleness)
+                "position": (hb.get("position") if hb else None),
                 "heartbeat": hb,
                 "standby": standby_state(),
                 "price": hb.get("price") if hb else None,
@@ -467,7 +472,7 @@ def _compute_metrics(pnls: list[float], metas: list[dict],
                                     {"n": 0, "net": 0.0})
         slot["n"] += 1
         slot["net"] = round(slot["net"] + p, 2)
-    hist = {"labels": [], "counts": [], "pos": []}
+    hist: dict = {"labels": [], "counts": [], "pos": []}
     if n:
         lo, hi = min(pnls), max(pnls)
         if hi <= lo:
@@ -557,7 +562,7 @@ def _fmt_audit(rec: dict) -> str:
             prob = 0
         bits = [f"skip · {reg.get('regime', '?')} {prob}%"]
         try:
-            bits.append(f"adx {float(reg.get('adx')):.0f}")
+            bits.append(f"adx {float(reg.get('adx') or 0):.0f}")
         except (TypeError, ValueError):
             pass
         if news.get("next_event"):
