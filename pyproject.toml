@@ -1,0 +1,48 @@
+[project]
+name = "gold-reaper"
+version = "2.1.0"
+description = "Autonomous XAU/USD trading system - walk-forward validated - MT5 + Bitget + paper - dark-terminal dashboard"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "muhammadwhizz-web" }]
+keywords = [
+    "gold", "xauusd", "trading-bot", "algorithmic-trading", "metatrader5",
+    "mt5", "exness", "bitget", "ccxt", "quantitative-finance",
+    "walk-forward", "backtesting", "autonomous-trading",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+dependencies = [
+    "yfinance>=0.2.40", "pandas>=2.0.0", "numpy>=1.26.0", "ccxt>=4.2.0",
+    "python-dotenv>=1.0.0", "duckdb>=1.0.0", "scikit-learn>=1.4.0",
+    "xgboost>=2.0.0", "statsmodels>=0.14.0", "hmmlearn>=0.3.2",
+    "joblib>=1.3.0", "fastapi>=0.110.0", "uvicorn>=0.29.0", "redis>=5.0.0",
+    "rich>=13.7.0", "jinja2>=3.1.0", "sse-starlette>=2.0.0", "pillow>=10.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["asciinema>=2.4.0", "pytest>=8.0.0", "ruff>=0.4.0"]
+windows = ["MetaTrader5>=5.0.45", "colorama>=0.4.6"]
+
+[project.urls]
+Repository = "https://github.com/muhammadwhizz-web/gold-reaper"
+Documentation = "https://github.com/muhammadwhizz-web/gold-reaper/tree/main/docs"
+Live-Demo = "https://muhammadwhizz-web.github.io/gold-reaper/"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

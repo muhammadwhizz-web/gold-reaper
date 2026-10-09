@@ -1,222 +1,197 @@
 <div align="center">
 
-<img src="docs/banner.png" width="100%" alt="GOLD REAPER banner"/>
+<img src="docs/banner.png" width="100%" alt="GOLD//REAPER — autonomous XAU/USD trading system"/>
 
-# ☠️ 𝐆𝐎𝐋𝐃 𝐑𝐄𝐀𝐏𝐄𝐑 𝐀𝐏𝐄𝐗 ☠️
+# GOLD//REAPER
 
-### *the 24/7 XAU/USD autonomous hunter — now measuring 142 features across 10 dimensions*
+### Autonomous XAU/USD trading system · walk-forward validated · dark-terminal ops
 
-**`APEX-X Ensemble` · `HMM Regime Router` · `News Brain` · `Exness MT5` · `Bitget` · `Win + Linux`**
+[![CI](https://img.shields.io/badge/CI-blood_test-00FF9C?style=flat-square&labelColor=0A0E0F)](https://github.com/muhammadwhizz-web/gold-reaper/actions)
+[![Python](https://img.shields.io/badge/python-3.12-00D9FF?style=flat-square&labelColor=0A0E0F)](https://python.org)
+[![License](https://img.shields.io/badge/license-MIT-5A6B6F?style=flat-square&labelColor=0A0E0F)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/muhammadwhizz-web/gold-reaper/main?style=flat-square&labelColor=0A0E0F&color=00FF9C)](https://github.com/muhammadwhizz-web/gold-reaper/commits/main)
+[![Backtest](https://img.shields.io/badge/backtest-walk--forward-FFB000?style=flat-square&labelColor=0A0E0F)](docs/STRATEGY.md)
 
-[![Python](https://img.shields.io/badge/python-3.12-black?style=for-the-badge&logo=python&logoColor=ff1744)](https://python.org)
-[![Platform](https://img.shields.io/badge/platform-linux%20%7C%20win-black?style=for-the-badge&logo=gnu-bash&logoColor=ff1744)](#-installation--autostart)
-[![License](https://img.shields.io/badge/license-MIT-black?style=for-the-badge&logo=opensourceinitiative&logoColor=ff1744)](LICENSE)
-[![Status](https://img.shields.io/badge/status-🔥_APEX_hunting-black?style=for-the-badge&logo=hackthebox&logoColor=ff1744)](https://github.com/muhammadwhizz-web/gold-reaper/actions)
+[▶ LIVE DEMO](https://muhammadwhizz-web.github.io/gold-reaper/) · [▶ WATCH THE DEMO](docs/DEMO.md) · [docs](docs/ARCHITECTURE.md)
 
-</div>
-
-> **⚡ APEX UPGRADE — what changed:** the repo is now a full quant stack.
-> **142 engineered features** (indicators × volatility models × market structure ×
-> cross-asset cointegration × news sentiment) → **HMM regime router** → **APEX-X
-> ensemble** (trend / mean-reversion / breakout / news modules + transparent ML soft
-> vote) → **$20/4h block engine** with adaptive sizing, recovery mode and **latched
-> circuit breakers** (day −3% / week −7% / month −15%) → **audit trail** of every
-> decision → **Telegram/Discord/Email alerts** → **live dashboard** on :8050 →
-> **multi-account + broker failover**. Full architecture + honest backtest verdicts:
-> **[docs/APEX.md](docs/APEX.md)**.
-
-<div align="center">
-
-
-<img src="https://raw.githubusercontent.com/muhammadwhizz-web/gold-reaper/output/snake.svg" width="100%" alt="snake hunting the contribution grid"/>
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  > init reaper.exe --target XAUUSD --mode 24/7              │
-│  [✓] 20 years of gold data ingested  (5,032 daily bars)     │
-│  [✓] kill zone located               12:00–16:00 UTC        │
-│  [✓] REAPER-X strategy compiled      walk-forward verified  │
-│  [✓] circuit breakers armed          you cannot YOLO here   │
-│  [✓] brokers linked                  Exness · Bitget · PAPER│
-│  > status: HUNTING . . .                                          │
-└─────────────────────────────────────────────────────────────┘
-```
+`gold trading bot` · `xauusd bot` · `metatrader5 python` · `bitget ccxt` ·
+`algorithmic trading python` · `walk-forward backtest` · `autonomous trading system`
 
 </div>
 
 ---
 
-## ⚠️ READ THIS OR GET REKT
+## What it is
 
-> **No bot on planet Earth guarantees $120/day.** Anyone who promises that is lying to you.
-> What this bot **does** is hunt those targets with a *verifiable* strategy, hard risk
-> limits, and full transparency — and it **refuses to trade** when conditions are wrong.
-> Gold moves **$100+ some days**. Leverage cuts both ways. Run **PAPER mode first**.
-> Backtested ≠ future profit. Past performance does **not** guarantee anything.
-> *We are the Python Hunters — we hunt, we don't gamble.*
+GOLD//REAPER is an autonomous **XAU/USD (gold) trading system** written in
+Python 3.12 that ingests 20 years of market history, measures **142 features
+across 10 dimensions** — indicators, volatility models, market structure,
+cross-asset cointegration, news and sentiment — and trades through a
+regime-routed ensemble called **APEX-X**. Execution runs on **Exness via
+MetaTrader 5**, **Bitget futures via ccxt**, or a built-in paper simulator,
+24/7, under systemd or Task Scheduler with latched circuit breakers between
+the market and your account. Every decision is recorded to an append-only
+audit trail, every claim in this README is reproducible with one command, and
+the backtest verdict — including the losing regimes — is published below.
 
----
-
-## 🩸 The Mission
-
-| Target | Value | How the reaper enforces it |
-|---|---|---|
-| 🔥 Session profit | **$20 / session** | stops trading that session when hit |
-| 🔥 Daily profit | **$120 / day** | kills the engine when hit |
-| 🛡️ Daily loss stop | **-3% equity** | full stop, no revenge trades |
-| 🛡️ Loss streak | **3 losses** | cooldown until next session |
-| 🛡️ Risk per trade | **1% equity** | auto position sizing in oz |
-| 🛡️ Weekend guard | no entries | 2h before Friday close |
-
-## 🧠 REAPER-X :: the strategy
-
-Forged on **20 years of XAU/USD recon** (`data/fetch_history.py` — ingests real history),
-then optimized with a **4-fold walk-forward** so it doesn't fool itself:
+## Status
 
 ```text
-recon findings (real data, 2006 → 2026):
-  gold went $578 → $4,211  (+7.28x)
-  kill zone hourly range : LONDON/NY OVERLAP 0.60%  (12–16 UTC)
-  dead zone hourly range : late US session   0.33%
-  most explosive hour    : 13:00–14:00 UTC
-
-REAPER-X rules (H4 bias → H1 execution):
-  1. BIAS    H4 close vs EMA50 vs EMA200 → LONG / SHORT / STAND DOWN
-  2. TRAP    price must pull back within 0.6×ATR of EMA20
-  3. RESET   RSI(14) resets into the reload zone (L 38–52 / S 48–62)
-  4. KILL    body candle re-ignites in bias direction + ADX ≥ 24 (trend live)
-  5. RISK    SL 1.2×ATR · TP 3.2×ATR · breakeven @ +1R · ATR trail @ +1.5R
-  6. FILTER  US-data blackouts 12:25 / 13:25 UTC · Friday cutoff · weekend lock
+┌─ reaper ──────────────────────────────── 12:04:33 UTC ─┐
+│ session  london/ny overlap   ● HUNTING                 │
+│ equity   10,000.00 USD       +0.42% today              │
+│ open     1 x XAUUSD long     2,418.60 → TP 2,431.20    │
+│ guard    daily -3% · session +$20 · streak 0           │
+└────────────────────────────────────────────────────────┘
 ```
 
-## 📊 Walk-Forward Verdict *(real backtest, 2024-05 → 2026-10)*
+## Architecture
 
 ```text
-════════════════════════════════════════════════════════════
- REAPER-X :: BACKTEST VERDICT        1% risk, compounding
-════════════════════════════════════════════════════════════
- trades            40 (overlap-only)     win rate    50.0%
- net result        +1,417 USD (+14.2%)   profit fctr 1.70
- CAGR              +5.7% / yr            max DD      -7.1%
- pnl/yr            2024: +1,060 · 2025: +620 · 2026: -263
-════════════════════════════════════════════════════════════
- verdict: real, modest, honest edge — NOT a money printer.
+data acquisition        features + cognition          decision            execution
+─────────────────       ────────────────────          ──────────          ─────────
+yfinance 1m→1mo    ─┐   142 features · 10 dims        APEX-X ensemble     MT5 (exness)
+dukascopy ticks    ─┼─▶ HMM regime router        ──▶ consensus vote  ──▶ bitget (ccxt)
+forexfactory news  ─┘   news + sentiment               risk gates          paper sim
+        │                  │                              │                   │
+        └──────── duckdb store ── audit.jsonl ◀──────────┴───────────────────┘
+                                 (append-only black box)
 ```
 
-> 🔬 Reproduce it yourself: `python data/fetch_history.py && python research/backtest.py`
+Full module map: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-## 🗡️ Brokers
+## Strategy — REAPER-X + APEX-X ensemble
 
-| Broker | Route | Asset | OS |
-|---|---|---|---|
-| **Exness** | MetaTrader 5 (`MetaTrader5` pkg) | `XAUUSD` spot gold | Windows native · Linux via Wine |
-| **Bitget** | `ccxt` REST (futures) | `XAUT/USDT` tokenized gold | native Linux + Windows |
-| **PAPER** | built-in simulator, spread+slippage | virtual | everything, zero risk |
+Forged on 20 years of gold data and tuned by a **4-fold walk-forward
+optimizer** ranked by worst fold (robustness over glory):
 
-## ⚡ Installation & Autostart
+```text
+recon findings:            gold $578 → $4,211 (+7.28x)
+                           kill zone: london/ny overlap 12-16 UTC (0.60% hr range)
 
-### 🐧 Linux
+REAPER-X (trend module):   h4 bias (ema50/ema200)
+                           h1 pullback to ema20 (0.6x atr)
+                           rsi reload zone (L 38-52 · S 48-62)
+                           body-candle trigger + adx ≥ 24
+                           SL 1.2x atr · TP 3.2x atr · BE +1R · trail +1.5R
+
+APEX-X (v2 ensemble):      regime-routed modules vote:
+                             TREND (reaper-x) · MEANREV (bb+rsi+z)
+                             BREAKOUT (donchian+flow) · NEWS (post-event)
+                           consensus ≥ 2.5 weight + ≥ 2 rule modules
+                           xgboost soft vote ±0.5 (hard gate if AUC ≥ 0.56)
+```
+
+Details and findings: [docs/STRATEGY.md](docs/STRATEGY.md)
+
+## Backtest verdict — the honest section
+
+Canonical walk-forward engine (`research/backtest_apex.py`): no same-bar
+re-entry, slippage both sides, SL-first fills, expanding-window ML per fold.
+
+```text
+metric                     REAPER-X        APEX-X
+trades                         48             36
+net (USD)                   -970.12        -736.40
+win rate %                   33.33          36.11
+profit factor                 0.66           0.63
+max drawdown %               -14.17         -11.97
+4h blocks ≥ $20 %            27.08          27.78
+```
+
+- APEX-X **reduces the baseline's loss by 24%** and max drawdown by 2.2
+  points on a window containing the 2026 regime break — but both systems
+  lose there. Regime dependence is real and published.
+- Tabular ML (XGBoost, 142 features) did **not** clear out-of-sample AUC 0.56
+  on hourly (0.500) or daily (0.537) gold — the promotion gate rejected it.
+  The ML gate therefore runs as a transparent soft vote and arms itself only
+  if a future retrain clears the bar.
+- An earlier, less strict engine reported +14.2% (PF 1.70) on the same
+  config; the stricter engine does not reproduce that full-window. Both
+  engines agree on the lesson: trade regimes that pay, stand down when they
+  don't.
+
+Reproduce: `python data/ingest_multi_tf.py && python features/build_features.py && python research/backtest_apex.py`
+
+## Installation
+
+### Linux (systemd autostart)
+
 ```bash
 git clone https://github.com/muhammadwhizz-web/gold-reaper.git
 cd gold-reaper
-chmod +x install_linux.sh && ./install_linux.sh     # installs venv + systemd autostart
-cp .env.example .env && nano .env                   # your keys live here (never committed)
+chmod +x install_linux.sh && ./install_linux.sh
+cp .env.example .env && nano .env
 systemctl --user start gold-reaper
 tail -f data/reaper.log
 ```
 
-### 🪟 Windows
+Installs the bot service (boot-persistent, crash-restart 30s), the ops
+dashboard (:8050), and a weekly retrain timer.
+
+### Windows (Task Scheduler autostart)
+
 ```powershell
 git clone https://github.com/muhammadwhizz-web/gold-reaper.git
 cd gold-reaper
-powershell -ExecutionPolicy Bypass -File install_windows.ps1   # venv + Task Scheduler autostart
-notepad .env                                                    # MT5 login / Bitget keys
-Start-ScheduledTask -TaskName GOLD-REAPER                       # boots with Windows forever
+powershell -ExecutionPolicy Bypass -File install_windows.ps1
+notepad .env
+Start-ScheduledTask -TaskName GOLD-REAPER
 ```
 
-Both installers register the reaper as a **boot service** — crash? it restarts in 30s.
-Reboot? it comes back. It only dies when you tell it to.
+Registers three boot-persistent tasks: bot, dashboard (:8050), weekly retrain.
 
-## 🎛️ Going Live (when you're ready)
+Going live later: `BROKER=MT5` (or `BITGET`) + `PAPER_MODE=false` in `.env`.
+Protocol: **2 weeks paper → 0.01 lots → scale.** Risk contract:
+[docs/RISK.md](docs/RISK.md)
 
-```env
-# Exness route
-BROKER=MT5
-PAPER_MODE=false
-MT5_LOGIN=your_exness_login
-MT5_PASSWORD=***
-MT5_SERVER=Exness-MT5Real8          # exact server name from your Exness dashboard
+## Live demo — three layers
 
-# Bitget route
-BROKER=BITGET
-PAPER_MODE=false
-BITGET_KEY=***
-BITGET_SECRET=***
-BITGET_PASSPHRASE=***
-```
+| Layer | Command | What you get |
+|---|---|---|
+| Terminal | `python demo/terminal_demo.py` | boot sequence, matrix overture, simulated hunt with fill + protective moves + session summary |
+| Web | `python dashboard/app.py` → :8080 | equity curve, position card, PnL, trades, SSE log tail, matrix canvas — attaches to a live bot when present, mock session otherwise |
+| Static | [▶ LIVE DEMO](https://muhammadwhizz-web.github.io/gold-reaper/) | backend-free GitHub Pages build |
 
-**Protocol: 2 weeks paper → then 0.01-lot live → then scale risk. Never skip the line.**
+Record your own video: `bash demo/record_demo.sh` →
+`.cast` + `.gif` + `.mp4` (asciinema → agg → ffmpeg). Guide:
+[docs/DEMO.md](docs/DEMO.md)
 
-## 🗂️ Arsenal
+## Roadmap
+
+- [x] v1 — REAPER-X core, walk-forward tuning, brokers, autostart
+- [x] v2 — APEX stack: 10-dimension features, regime router, ensemble,
+      block risk engine, audit, alerts, dashboard
+- [x] v2.1 — professional rebrand, demo suite, GitHub Pages
+- [ ] v2.2 — OANDA/IBKR broker adapters, order-flow tick features from the
+      Dukascopy layer, per-regime parameter sets
+- [ ] v3 — meta-model OOS gate cleared → hard ML veto arms automatically;
+      portfolio mode (XAU + correlated assets)
+
+## Risk disclaimer
+
+Trading leveraged gold (CFDs, futures, tokenized metals) carries a
+substantial risk of loss and is not suitable for every investor. This
+software is educational, ships in **paper mode**, and publishes losing
+regimes alongside winning ones. Past performance — backtested or live — does
+not guarantee future results. You are solely responsible for your capital.
+Read [docs/RISK.md](docs/RISK.md) before enabling live execution.
+
+## License & credits
+
+MIT — see [LICENSE](LICENSE). Built with Python 3.12, pandas, NumPy,
+DuckDB, XGBoost, hmmlearn, statsmodels, ccxt, MetaTrader5, FastAPI, rich.
+
+<details>
+<summary>Repository map</summary>
 
 ```text
-gold-reaper/
-├── bot.py                    # the 24/7 hunter loop — main entry
-├── core/
-│   ├── config.py             # every dial & switch (.env overrides)
-│   ├── strategy.py           # REAPER-X signal engine + trade manager
-│   ├── risk.py               # circuit breakers, sizing, targets
-│   ├── indicators.py         # EMA / RSI / ATR / ADX — pure pandas
-│   ├── sessions.py           # session clock, blackout & weekend guards
-│   └── logger.py             # blood-red console + rotating file log
-├── brokers/
-│   ├── base.py               # broker contract
-│   ├── mt5_broker.py         # Exness via MetaTrader 5
-│   ├── bitget_broker.py      # Bitget futures via ccxt
-│   └── paper_broker.py       # full simulation (default)
-├── research/
-│   ├── backtest.py           # replay engine, spread+slippage aware
-│   └── optimize.py           # 4-fold walk-forward optimizer
-├── data/fetch_history.py     # 20-year XAU/USD data hunter
-├── .github/workflows/        # 🐍 snake animation + CI blood test
-├── install_linux.sh          # systemd autostart
-└── install_windows.ps1       # Task Scheduler autostart
+bot.py · core/ (strategy, strategy_apex, regime, news_brain, risk, risk_apex,
+audit, notify, sessions, indicators, config, logger, dashboard)
+brokers/ (mt5, bitget, paper) · features/ (build_features, store)
+ml/ (train_meta, retrain_schedule) · research/ (backtest_apex, backtest,
+optimize, sweep_labels, sweep_daily) · data/ (ingest_multi_tf, ingest_ticks,
+news_ingest, fetch_history) · demo/ (terminal_demo, record_demo.sh)
+dashboard/ (app, static) · docs/ · assets/ · .github/workflows/
 ```
-
-## 🔧 Daily Ops
-
-```bash
-python bot.py                        # run in foreground (PAPER default)
-python bot.py --broker MT5           # force a broker
-python research/backtest.py          # re-verify the edge
-python research/optimize.py          # re-tune after big regime shifts
-tail -f data/reaper.log              # watch the hunt
-cat data/state.json                  # pnl / streaks / targets state
-```
-
----
-
-<div align="center">
-
-<img src="https://raw.githubusercontent.com/muhammadwhizz-web/gold-reaper/output/snake-dark.svg" width="100%" alt="snake"/>
-
-**☠️ WE ARE THE PYTHON HUNTERS ☠️**
-*we don't predict the market. we stalk it.*
-
-```text
-while market.opens():
-    prey = strategy.locate(XAUUSD)
-    if prey and risk.alive():
-        execute(prey)          # clean. sized. circuit-broken.
-    else:
-        sleep(60)              # patience is a position
-```
-
-**TRADING RISK WARNING** — CFDs/futures/leveraged gold can wipe your account.
-This software ships **PAPER MODE ON**. Flip to live at your own risk.
-Educational software. No financial advice. *The reaper takes no responsibility —
-only profits it hunts within your own hard limits.*
-
-[⬆ back to top](#%EF%B8%8F-𝐠𝐨𝐥𝐝-𝐫𝐞𝐚𝐩𝐞𝐫-%EF%B8%8F)
-
-</div>
+</details>

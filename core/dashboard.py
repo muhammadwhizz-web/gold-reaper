@@ -118,7 +118,7 @@ PAGE = """<!doctype html>
   .latched { background:#3d0a0f; color:#ff1744; border-color:#ff1744; }
   .ok { background:#0b3d1f; color:#3fb950; }
 </style></head><body>
-<h1>☠️ GOLD REAPER APEX</h1>
+<h1>GOLD//REAPER</h1>
 <div class="sub">autonomous XAU/USD hunter · refresh 5s · UTC {now}</div>
 <div class="grid">
   <div class="card"><h3>EQUITY</h3><div class="big">{equity}</div></div>
@@ -206,7 +206,7 @@ def index():
 
 def main() -> int:
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8050
-    print(f"[DASHBOARD] GOLD REAPER APEX console -> http://localhost:{port}")
+    print(f"[DASHBOARD] GOLD//REAPER console -> http://localhost:{port}")
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
     return 0
 

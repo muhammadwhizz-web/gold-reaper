@@ -115,6 +115,24 @@ jobs:
           s.close()
           PY
 
+      - name: Demo layer checks (terminal + dashboard imports)
+        run: |
+          python - <<'PY'
+          import sys; sys.path.insert(0, '.')
+          # terminal demo module imports cleanly
+          import importlib.util
+          spec = importlib.util.spec_from_file_location("tdemo", "demo/terminal_demo.py")
+          m = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(m)
+          assert callable(m.main)
+          # dashboard app imports + mock payloads coherent
+          from dashboard.app import state_payload, trades_payload
+          s = state_payload(); t = trades_payload()
+          assert {"equity","day_pnl","equity_history"} <= set(s)
+          assert len(t) >= 1 and len(s["equity_history"]) >= 2
+          print("demo layers OK | state mode:", s["mode"], "| trades:", len(t))
+          PY
+
       - name: Reaper is alive
         if: success()
         run: echo "APEX blood test green - the hunter lives"

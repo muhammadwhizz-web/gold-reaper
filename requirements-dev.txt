@@ -1,0 +1,5 @@
+# development / demo tooling (not required to run the bot)
+-r requirements.txt
+asciinema>=2.4.0        # terminal session recorder (demo/record_demo.sh)
+pytest>=8.0.0           # local test runs
+ruff>=0.4.0             # lint
