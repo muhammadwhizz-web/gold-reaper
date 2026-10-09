@@ -4,12 +4,18 @@ GOLD//REAPER :: Web Dashboard (FastAPI, port 8080)
 ===================================================
 Terminal-native ops console:
 
-  live equity curve (SVG) · open position · session/daily PnL · win streak
-  last 20 trades · SSE log tail · matrix rain canvas · terminal palette
+  live equity curve · open position · session/daily PnL · win streak
+  trade analytics (PF · expectancy · drawdown · pnl histogram)
+  hunt-window clock · last 20 trades · SSE log tail · matrix rain canvas
 
 Reads the bot's real state files when present (data/apex_risk.json,
 data/trades.csv, data/audit.jsonl) and falls back to seeded mock data
 when they are not - so the demo runs with zero keys and zero brokers.
+In live mode an empty journal renders an honest empty state, never mock
+rows (the brand contract: losses published, fabrications never).
+
+Endpoints: /api/state · /api/trades · /api/metrics · /api/track_record
+           /api/stream (SSE)
 
 Run:   python dashboard/app.py          ->  http://localhost:8080
 """
@@ -74,35 +80,83 @@ def _equity_history_mock(points: int = 120) -> list[float]:
     return out
 
 
-def _equity_history_from_trades(points: int = 120) -> list[float] | None:
-    """Real cumulative equity curve from the paper journal (trades.csv).
-    Returns None when there are no closed trades yet - callers fall back
-    to the seeded mock tail so the demo still renders."""
-    f = DATA / "trades.csv"
+def _fills() -> list[dict]:
+    """Realized fills from the audit ledger - the source of truth for PnL.
+    (trades.csv journals ENTRIES with planned risk; realized pnl only ever
+    lands in audit.jsonl 'fill' events, emitted by bot._manage_positions.)"""
+    f = DATA / "audit.jsonl"
+    out: list[dict] = []
     if not f.exists():
-        return None
+        return out
     try:
-        rows = list(csv.DictReader(f.open(newline="", encoding="utf-8")))
-        pnls = []
-        for r in rows:
+        for line in f.read_text(encoding="utf-8").splitlines():
             try:
-                pnls.append(float(str(r.get("pnl", r.get("pnl_usd", 0)))
-                                  .replace("+", "").replace(",", "")))
+                rec = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            if rec.get("kind") != "fill":
+                continue
+            d = rec.get("data", {}) or {}
+            try:
+                pnl = float(d.get("pnl", 0))
             except (TypeError, ValueError):
                 continue
-        if not pnls:
-            return None
-        eq, out = 10_000.0, []
-        # stepwise curve: one point per trade, then pad to `points` resolution
-        for p in pnls:
-            eq += p
-            out.append(round(eq, 2))
-        if len(out) < points:
-            pad = [out[0] - (out[0] - 10_000.0) * k / points for k in range(points - len(out))]
-            out = pad + out
-        return out[-points:]
+            out.append({"ts": str(rec.get("ts", "")), "pnl": pnl,
+                        "block_pnl": d.get("block_pnl")})
     except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def _entries() -> list[dict]:
+    """Entry journal rows (planned risk at order time)."""
+    f = DATA / "trades.csv"
+    if not f.exists():
+        return []
+    try:
+        return list(csv.DictReader(f.open(newline="", encoding="utf-8")))
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _start_balance() -> float | None:
+    """Balance the paper account started from (reconstructed)."""
+    fills = _fills()
+    try:
+        bal = json.loads((DATA / "apex_risk.json").read_text()).get("balance")
+        if isinstance(bal, (int, float)) and bal > 0:
+            return float(bal) - sum(f["pnl"] for f in fills)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _equity_history_from_fills(points: int = 120) -> list[float] | None:
+    """Real stepwise equity curve from realized fills.
+    Returns None when nothing has closed yet - live callers then render a
+    flat line at the true equity (never the mock walk)."""
+    fills = _fills()
+    if not fills:
         return None
+    base = _start_balance()
+    if base is None:
+        base = 10_000.0 - sum(f["pnl"] for f in fills)
+    eq, walk = base, []
+    for f in fills:
+        eq += f["pnl"]
+        walk.append(round(eq, 2))
+    if len(walk) >= points:
+        return [round(base, 2)] + walk[-points:]
+    return [round(base, 2)] * (points - len(walk)) + walk
+
+
+def _flat_equity(value: float, points: int = 120) -> list[float]:
+    """Honest flat curve for a live account with zero realized fills."""
+    try:
+        v = round(float(value), 2)
+    except (TypeError, ValueError):
+        v = 0.0
+    return [v] * points
 
 
 def state_payload() -> dict:
@@ -111,10 +165,12 @@ def state_payload() -> dict:
     if risk_file.exists():
         try:
             risk = json.loads(risk_file.read_text())
+            eq = risk.get("equity", 0)
+            hist = _equity_history_from_fills()
             return {
                 "mode": "live",
                 "ts": datetime.now(timezone.utc).isoformat(),
-                "equity": risk.get("equity", 0),
+                "equity": eq,
                 "day_pnl": risk.get("day_pnl", 0.0),
                 "week_pnl": risk.get("week_pnl", 0.0),
                 "month_pnl": risk.get("month_pnl", 0.0),
@@ -125,8 +181,8 @@ def state_payload() -> dict:
                 "latched": risk.get("latched", False),
                 "wins": risk.get("wins", 0),
                 "losses": risk.get("losses", 0),
-                "equity_history": _equity_history_from_trades()
-                                  or _equity_history_mock(),
+                "equity_source": "fills" if hist else "flat",
+                "equity_history": hist or _flat_equity(eq),
                 "position": None,
                 "session": "london/ny overlap",
                 "regime": {"name": "TREND_UP", "confidence": 0.71,
@@ -199,14 +255,7 @@ def track_record_payload() -> dict:
             "source": "docs/TRACK_RECORD.md (append-only)"}
 
 
-def trades_payload(limit: int = 20) -> list[dict]:
-    f = DATA / "trades.csv"
-    if f.exists():
-        try:
-            rows = list(csv.DictReader(f.open()))[-limit:]
-            return rows[::-1]
-        except Exception:  # noqa: BLE001
-            pass
+def _mock_trades(limit: int = 20) -> list[dict]:
     rng = random.Random(MOCK_SEED)
     out = []
     px = 2418.0
@@ -222,6 +271,188 @@ def trades_payload(limit: int = 20) -> list[dict]:
             "session": rng.choice(["LONDON_NY_OVERLAP", "LONDON"]),
         })
     return out
+
+
+def _is_live() -> bool:
+    """The bot's real state file exists - never dress it up with mock data."""
+    return (DATA / "apex_risk.json").exists()
+
+
+def trades_payload(limit: int = 20) -> dict:
+    """Live: entry journal enriched with realized pnl (k-th fill closes the
+    k-th entry - the bot holds one position at a time). Mock otherwise."""
+    entries = _entries()
+    fills = _fills()
+    if entries or fills:
+        rows: list[dict] = []
+        for i, e in enumerate(entries):
+            ts = str(e.get("ts_utc", ""))[:19].replace("T", " ")
+            try:
+                entry = f"{float(str(e.get('entry', '')).replace(',', '')):,.2f}"
+            except (TypeError, ValueError):
+                entry = str(e.get("entry", "—"))
+            rows.append({
+                "ts": ts + " UTC" if ts else "—",
+                "side": e.get("side", "—"),
+                "size_oz": e.get("size_oz", "—"),
+                "entry": entry,
+                "pnl": f"{fills[i]['pnl']:+.2f}" if i < len(fills) else "—",
+                "regime": e.get("regime", "—"),
+                "session": e.get("session", "—"),
+            })
+        # fills without a journaled entry must never be hidden
+        for j in range(len(entries), len(fills)):
+            f = fills[j]
+            rows.append({"ts": f["ts"][:19].replace("T", " ") + " UTC",
+                         "side": "—", "size_oz": "—", "entry": "—",
+                         "pnl": f"{f['pnl']:+.2f}", "regime": "—",
+                         "session": "—"})
+        return {"mode": "live", "rows": rows[::-1][:limit]}
+    if _is_live():
+        # live account, zero activity yet - honest empty state, not mock rows
+        return {"mode": "live", "rows": []}
+    return {"mode": "mock", "rows": _mock_trades(limit)}
+
+
+def _compute_metrics(pnls: list[float], metas: list[dict],
+                     start: float) -> dict:
+    """Quant stats over realized pnl: PF, expectancy, max DD, histogram."""
+    n = len(pnls)
+    wins = [p for p in pnls if p > 0]
+    losses = [p for p in pnls if p < 0]
+    gross_win, gross_loss = sum(wins), -sum(losses)
+    eq, peak, max_dd, max_dd_pct, underwater = start, start, 0.0, 0.0, []
+    for p in pnls:
+        eq += p
+        peak = max(peak, eq)
+        dd = eq - peak
+        underwater.append(round(dd / peak * 100, 3) if peak else 0.0)
+        if dd < max_dd:
+            max_dd = dd
+            max_dd_pct = round(dd / peak * 100, 2)
+    lw = ll = cw = cl = 0
+    for p in pnls:
+        if p > 0:
+            cw, cl = cw + 1, 0
+        elif p < 0:
+            cl, cw = cl + 1, 0
+        else:
+            cw = cl = 0
+        lw, ll = max(lw, cw), max(ll, cl)
+    by_regime: dict[str, dict] = {}
+    for p, m in zip(pnls, metas):
+        slot = by_regime.setdefault(str(m.get("regime") or "—"),
+                                    {"n": 0, "net": 0.0})
+        slot["n"] += 1
+        slot["net"] = round(slot["net"] + p, 2)
+    hist = {"labels": [], "counts": [], "pos": []}
+    if n:
+        lo, hi = min(pnls), max(pnls)
+        if hi <= lo:
+            hi = lo + 1.0
+        k = 8
+        width = (hi - lo) / k
+        counts = [0] * k
+        for p in pnls:
+            counts[min(k - 1, max(0, int((p - lo) / width)))] += 1
+        for i in range(k):
+            a, b = lo + width * i, lo + width * (i + 1)
+            hist["labels"].append(f"{a:+.0f}..{b:+.0f}")
+            hist["counts"].append(counts[i])
+            hist["pos"].append((a + b) / 2 >= 0)
+    return {
+        "n": n, "wins": len(wins), "losses": len(losses),
+        "win_rate": round(len(wins) / n * 100, 1) if n else None,
+        "pf": round(gross_win / gross_loss, 2) if gross_loss > 0 else None,
+        "expectancy": round(sum(pnls) / n, 2) if n else 0.0,
+        "net": round(sum(pnls), 2),
+        "avg_win": round(gross_win / len(wins), 2) if wins else None,
+        "avg_loss": round(gross_loss / len(losses), 2) if losses else None,
+        "best": round(max(pnls), 2) if n else None,
+        "worst": round(min(pnls), 2) if n else None,
+        "max_drawdown": round(max_dd, 2), "max_drawdown_pct": max_dd_pct,
+        "longest_win_streak": lw, "longest_loss_streak": ll,
+        "histogram": hist, "underwater": underwater,
+        "by_regime": by_regime,
+        "start_balance": round(start, 2),
+    }
+
+
+def metrics_payload() -> dict:
+    """Analytics over REALIZED fills (live) or the seeded mock session."""
+    fills = _fills()
+    if fills:
+        entries = _entries()
+        metas = [{"regime": (entries[i].get("regime") if i < len(entries) else None),
+                  "session": (entries[i].get("session") if i < len(entries) else None)}
+                 for i in range(len(fills))]
+        start = _start_balance() or 10_000.0
+        m = _compute_metrics([f["pnl"] for f in fills], metas, start)
+        m["source"] = "live"
+        return m
+    if _is_live():
+        m = _compute_metrics([], [], _start_balance() or 1000.0)
+        m["source"] = "live"
+        return m
+    rows = _mock_trades(20)
+    pnls = [float(r["pnl"]) for r in rows]
+    metas = [{"regime": r["regime"], "session": r["session"]} for r in rows]
+    m = _compute_metrics(pnls, metas, 10_000.0)
+    m["source"] = "mock"
+    return m
+
+
+def _fmt_audit(rec: dict) -> str:
+    """Human one-liner for an audit record (SSE log tail)."""
+    kind = rec.get("kind", "?")
+    d = rec.get("data", {}) or {}
+    if kind == "fill":
+        try:
+            pnl = float(d.get("pnl", 0))
+        except (TypeError, ValueError):
+            pnl = 0.0
+        try:
+            blk = float(d.get("block_pnl", 0))
+        except (TypeError, ValueError):
+            blk = 0.0
+        return f"fill {pnl:+.2f} USD · block {blk:+.2f}"
+    if kind == "lifecycle":
+        ev = str(d.get("event", ""))
+        if ev == "start":
+            return f"reaper online · broker {d.get('broker', '?')}"
+        if ev == "stop":
+            return "reaper offline · clean shutdown"
+        if ev == "breakeven":
+            return (f"protective stop -> breakeven "
+                    f"ticket {d.get('ticket', '?')} @ {d.get('sl', '?')}")
+        return f"lifecycle · {ev or kind}"
+    if kind == "skip":
+        reg = d.get("regime", {}) or {}
+        news = d.get("news", {}) or {}
+        try:
+            prob = int(float(reg.get("probability") or 0) * 100)
+        except (TypeError, ValueError):
+            prob = 0
+        bits = [f"skip · {reg.get('regime', '?')} {prob}%"]
+        try:
+            bits.append(f"adx {float(reg.get('adx')):.0f}")
+        except (TypeError, ValueError):
+            pass
+        if news.get("next_event"):
+            bits.append(f"news: {news['next_event']} "
+                        f"in {news.get('min_to_event', '?')}m")
+        votes = d.get("votes") or {}
+        if votes:
+            bits.append("votes " + " ".join(
+                f"{k}:{v}" for k, v in list(votes.items())[:3]))
+        else:
+            bits.append("no confluence")
+        return " · ".join(str(b) for b in bits)
+    if kind == "order":
+        if d.get("ok"):
+            return "order executed"
+        return f"order rejected · {d.get('error', 'unknown')}"
+    return f"{kind} · {json.dumps(d)[:120]}"
 
 
 def log_lines_mock(n: int = 14) -> list[str]:
@@ -263,7 +494,12 @@ def api_state() -> JSONResponse:
 
 @app.get("/api/trades")
 def api_trades() -> JSONResponse:
-    return JSONResponse({"rows": trades_payload()})
+    return JSONResponse(trades_payload())
+
+
+@app.get("/api/metrics")
+def api_metrics() -> JSONResponse:
+    return JSONResponse(metrics_payload())
 
 
 @app.get("/api/track_record")
@@ -272,20 +508,36 @@ def api_track_record() -> JSONResponse:
 
 
 async def _stream():
-    """SSE: tails the audit ledger when the bot runs; mock stream otherwise."""
+    """SSE: seeds recent audit history, then tails new records live;
+    mock stream when no audit ledger exists."""
     audit = DATA / "audit.jsonl"
     if audit.exists():
+
+        def _events() -> list[dict]:
+            out = []
+            for line in audit.read_text(encoding="utf-8").splitlines():
+                try:
+                    rec = json.loads(line)
+                except Exception:  # noqa: BLE001
+                    continue
+                ts = str(rec.get("ts", ""))[11:19]
+                out.append({"t": ts,
+                            "line": f"{ts} | {_fmt_audit(rec)}"})
+            return out
+
+        # seed the panel with recent history (chronological - the UI
+        # prepends, so the newest record ends up on top)
+        for ev in _events()[-14:]:
+            yield {"data": json.dumps(ev)}
         pos = audit.read_text().count("\n")
         while True:
             lines = audit.read_text().splitlines()
             while pos < len(lines):
                 try:
                     rec = json.loads(lines[pos])
-                    ts = rec.get("ts", "")[11:19]
-                    d = rec.get("data", {})
-                    msg = (d.get("why") or d.get("message") or
-                           d.get("event") or rec.get("kind", ""))
-                    yield {"data": json.dumps({"t": ts, "line": f"{ts} | {msg}"})}
+                    ts = str(rec.get("ts", ""))[11:19]
+                    yield {"data": json.dumps(
+                        {"t": ts, "line": f"{ts} | {_fmt_audit(rec)}"})}
                 except Exception:  # noqa: BLE001
                     pass
                 pos += 1

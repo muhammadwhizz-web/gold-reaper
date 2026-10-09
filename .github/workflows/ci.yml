@@ -166,11 +166,15 @@ jobs:
           spec.loader.exec_module(m)
           assert callable(m.main)
           # dashboard app imports + mock payloads coherent
-          from dashboard.app import state_payload, trades_payload
-          s = state_payload(); t = trades_payload()
+          from dashboard.app import state_payload, trades_payload, metrics_payload
+          s = state_payload(); t = trades_payload(); m = metrics_payload()
           assert {"equity","day_pnl","equity_history"} <= set(s)
-          assert len(t) >= 1 and len(s["equity_history"]) >= 2
-          print("demo layers OK | state mode:", s["mode"], "| trades:", len(t))
+          assert isinstance(t, dict) and t["mode"] == "mock" and len(t["rows"]) >= 1
+          assert m["source"] == "mock" and m["n"] >= 1 and "histogram" in m
+          assert m["n"] == len(t["rows"])  # analytics agree with the table
+          print("demo layers OK | state mode:", s["mode"],
+                "| trades:", len(t["rows"]), "| metrics n:", m["n"],
+                "| pf:", m["pf"], "| wr:", m["win_rate"])
           PY
 
       - name: Reaper is alive

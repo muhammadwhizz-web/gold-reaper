@@ -72,6 +72,58 @@ jobs:
           track = {"rows": led_rows[::-1][:10], "days": len(led_rows),
                    "total_net": total,
                    "source": "docs/TRACK_RECORD.md (append-only)"}
+          # analytics mock — derived from the SAME seeded trades so the
+          # analytics panel always agrees with the visible table
+          pnls = [float(t["pnl"]) for t in trades]
+          wins = [p for p in pnls if p > 0]
+          losses = [p for p in pnls if p < 0]
+          gw, gl = sum(wins), -sum(losses)
+          start = 10000.0
+          eqp, peak, mdd, mddp, under = start, start, 0.0, 0.0, []
+          for p in pnls:
+              eqp += p
+              peak = max(peak, eqp)
+              dd = eqp - peak
+              under.append(round(dd / peak * 100, 3) if peak else 0.0)
+              if dd < mdd:
+                  mdd = dd
+                  mddp = round(dd / peak * 100, 2)
+          lw = ll = cw = cl = 0
+          for p in pnls:
+              cw = cw + 1 if p > 0 else 0
+              cl = cl + 1 if p < 0 else 0
+              lw, ll = max(lw, cw), max(ll, cl)
+          lo, hi = min(pnls), max(pnls)
+          if hi <= lo:
+              hi = lo + 1.0
+          k = 8
+          width = (hi - lo) / k
+          counts = [0] * k
+          for p in pnls:
+              counts[min(k - 1, max(0, int((p - lo) / width)))] += 1
+          hist = {"labels": [f"{lo + width * i:+.0f}..{lo + width * (i + 1):+.0f}"
+                             for i in range(k)],
+                  "counts": counts,
+                  "pos": [(lo + width * i + lo + width * (i + 1)) / 2 >= 0
+                          for i in range(k)]}
+          by_regime = {}
+          for t, p in zip(trades, pnls):
+              slot = by_regime.setdefault(t["regime"], {"n": 0, "net": 0.0})
+              slot["n"] += 1
+              slot["net"] = round(slot["net"] + p, 2)
+          metrics = {"n": len(pnls), "wins": len(wins), "losses": len(losses),
+                     "win_rate": round(len(wins) / len(pnls) * 100, 1),
+                     "pf": round(gw / gl, 2) if gl > 0 else None,
+                     "expectancy": round(sum(pnls) / len(pnls), 2),
+                     "net": round(sum(pnls), 2),
+                     "avg_win": round(gw / len(wins), 2) if wins else None,
+                     "avg_loss": round(gl / len(losses), 2) if losses else None,
+                     "best": round(max(pnls), 2), "worst": round(min(pnls), 2),
+                     "max_drawdown": round(mdd, 2), "max_drawdown_pct": mddp,
+                     "longest_win_streak": lw, "longest_loss_streak": ll,
+                     "histogram": hist, "underwater": under,
+                     "by_regime": by_regime, "start_balance": start,
+                     "source": "mock"}
           mock = {"state": {
               "mode": "mock", "ts": "2026-10-09T12:04:33+00:00",
               "equity": hist[-1], "day_pnl": day,
@@ -91,7 +143,7 @@ jobs:
                   {"name": "Paper", "state": "up", "latency_ms": 1}],
               "streak": 1, "hunt_window": "12-14 UTC",
               "geometry": "SL 1.2xATR \u00b7 TP 2.0R \u00b7 risk 1%"},
-              "trades": trades, "track_record": track}
+              "trades": trades, "track_record": track, "metrics": metrics}
           mock_log = [
               "12:04:31 | scan bar 2415.80 atr 3.4 adx 27 regime TREND_UP",
               "12:04:33 | order executed XAUUSD LONG 0.028 oz @ 2418.60",
@@ -104,7 +156,7 @@ jobs:
           with open("_site/mock-data.js", "w") as f:
               f.write("window.MOCK_DATA = " + json.dumps(mock) + ";\n")
               f.write("window.MOCK_LOG = " + json.dumps(mock_log) + ";\n")
-          print("mock dataset embedded (new contract + ledger)")
+          print("mock dataset embedded (state + trades + metrics + ledger)")
           PY
           # inject the static dataset only into the Pages copy (the FastAPI
           # page stays network-driven)

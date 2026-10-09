@@ -2,6 +2,55 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [2.4] — 2026-10-09 — honest zero-state console + analytics layer
+
+### Fixed (QA round: agent-browser audit found 5 bugs)
+- Live mode with zero realized fills rendered the seeded MOCK equity walk
+  ($10k scale) next to the real $1,000 balance — misleading scale. The live
+  curve is now flat at true equity, labeled "flat · awaiting first realized
+  fill"; mock walks only ever render in mock mode.
+- Live mode with zero fills rendered 20 mock trade rows while the streak
+  panel said W0·L0. The trades table now shows an honest "no fills yet —
+  journal open, first hunt pending" empty state (mock rows only in mock mode).
+- SSE stream produced nothing until a NEW audit record arrived (panel looked
+  dead whenever the bot was idle). The stream now seeds the last ~14 audit
+  records formatted, then tails live.
+- Audit records were flattened to their bare kind ("skip"). Full formatter
+  now renders skip reasons (regime + probability + ADX + news countdown +
+  confluence votes), fills (`fill +23.41 USD · block +23.41`), lifecycle
+  (reaper online/offline/breakeven), and order rejections.
+- Latent: the "real equity curve" read a `pnl` column from trades.csv that
+  the bot's journal schema never writes (entries journal planned risk only;
+  realized PnL lives in audit.jsonl fill events). Equity now reconstructs
+  from fills, and trade rows pair the k-th entry with the k-th fill
+  (one-position-at-a-time invariant), so realized PnL shows in the table.
+
+### Added
+- `GET /api/metrics` — realized-fill analytics: profit factor, win rate,
+  expectancy, avg win/loss, best/worst, max drawdown ($ and %), longest
+  win/loss streaks, 8-bin PnL histogram, underwater series, per-regime PnL
+  split. Live source = fills; mock source = the same seeded session as the
+  table (numbers always agree).
+- Dashboard analytics panel: 8-cell stat grid + pure-SVG PnL distribution
+  (green/red by sign) + underwater drawdown curve with min marker.
+- Hunt clock panel + topbar countdown chip: time to next 12:00-14:00 UTC
+  window (or "OPEN" + time left during it), window progress bar, next three
+  window opens. Pure client-side UTC math.
+- Trades CSV export button (client-side from loaded rows; disabled when empty).
+- Animated count-up ticker on equity figures (skipped under
+  prefers-reduced-motion).
+
+### Changed (styling detail pass)
+- Subtle CRT scanline overlay, panel hover border transition, pulsing
+  "awaiting telemetry" placeholders, styled empty states with LED markers.
+- SSE severity coloring extended (fill/reaper online → green, skip → dim,
+  offline → red).
+
+### Ops
+- Pages mock payload now embeds metrics so the public demo renders the
+  analytics panel backend-free; CI demo-layer check asserts the metrics
+  payload agrees with the trades table.
+
 ## [2.3] — 2026-10-09 — signal diagnosis + hardened config (VISUAL/SIGNAL SUPREMACY)
 
 ### Fixed (the signal, honestly)

@@ -301,6 +301,136 @@ body.standby #standby { display: flex; }
 .sbpanel .sbt { color: var(--amber); font-size: 19px; font-weight: 700; letter-spacing: 3px; }
 .sbpanel .sbs { color: var(--dim); font-size: 11px; margin-top: 9px; letter-spacing: 1px; }
 
+/* ─────────────────────────────────────────────── scanlines / polish ── */
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 90; pointer-events: none;
+  background: repeating-linear-gradient(0deg,
+    rgba(201,209,217,0.016) 0 1px, transparent 1px 3px);
+}
+.panel { transition: border-color 0.18s ease; }
+.panel:hover { border-color: #243430; }
+.await { animation: awaitpulse 1.7s ease-in-out infinite; }
+@keyframes awaitpulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+.empty {
+  display: flex; align-items: center; gap: 9px;
+  color: var(--dim); padding: 16px 2px; font-size: 12px;
+}
+.btn-xs {
+  font-size: 9.5px; letter-spacing: 1.2px; padding: 3px 9px;
+  text-transform: uppercase; transition: color 0.15s, border-color 0.15s;
+}
+.btn-xs[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+/* ─────────────────────────────────────────────── analytics panel ── */
+.statgrid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--line); border: 1px solid var(--line); margin-bottom: 12px;
+}
+.statcell { background: var(--panel); padding: 8px 10px; min-width: 0; }
+.statcell .k {
+  display: block; font-size: 9.5px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--dim); white-space: nowrap;
+}
+.statcell .v {
+  display: block; font-size: 14.5px; font-weight: 700; margin-top: 3px;
+  color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.statcell .v.g { color: var(--green); }
+.statcell .v.r { color: var(--red); }
+.mxrow { display: flex; gap: 14px; flex-wrap: wrap; }
+.mxcol { flex: 1 1 220px; min-width: 200px; }
+.mxlab {
+  font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--dim); margin-bottom: 6px;
+}
+.mxsvg svg { display: block; width: 100%; height: 110px; }
+.mxregimes {
+  display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px;
+  padding-top: 9px; border-top: 1px solid var(--line);
+  font-size: 11px; color: var(--dim);
+}
+.mxregimes b { font-weight: 400; }
+
+/* ─────────────────────────────────────────────── hunt clock ── */
+.hclock {
+  font-size: 27px; font-weight: 700; letter-spacing: 2px; color: var(--dim);
+  margin: 6px 0 2px; font-variant-numeric: tabular-nums;
+}
+.hclock.open { color: var(--green); }
+.hclocksub { font-size: 11px; color: var(--dim); letter-spacing: 0.5px; }
+.hprog { height: 3px; background: var(--line); margin: 12px 0 8px; }
+.hprog i {
+  display: block; height: 100%; width: 0; background: var(--green);
+  transition: width 0.6s linear;
+}
+.hnext { font-size: 10.5px; color: var(--dim); line-height: 1.8; letter-spacing: 0.4px; }
+.hnext .nx { color: var(--cyan); }
+
+/* ─────────────────────────────────────────────── scanlines / polish ── */
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 90; pointer-events: none;
+  background: repeating-linear-gradient(0deg,
+    rgba(201,209,217,0.016) 0 1px, transparent 1px 3px);
+}
+.panel { transition: border-color 0.18s ease; }
+.panel:hover { border-color: #243430; }
+.await { animation: awaitpulse 1.7s ease-in-out infinite; }
+@keyframes awaitpulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+.empty {
+  display: flex; align-items: center; gap: 9px;
+  color: var(--dim); padding: 16px 2px; font-size: 12px;
+}
+.btn-xs {
+  font-size: 9.5px; letter-spacing: 1.2px; padding: 3px 9px;
+  text-transform: uppercase; transition: color 0.15s, border-color 0.15s;
+}
+.btn-xs[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+/* ─────────────────────────────────────────────── analytics panel ── */
+.statgrid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--line); border: 1px solid var(--line); margin-bottom: 12px;
+}
+.statcell { background: var(--panel); padding: 8px 10px; min-width: 0; }
+.statcell .k {
+  display: block; font-size: 9.5px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--dim); white-space: nowrap;
+}
+.statcell .v {
+  display: block; font-size: 14.5px; font-weight: 700; margin-top: 3px;
+  color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.statcell .v.g { color: var(--green); }
+.statcell .v.r { color: var(--red); }
+.mxrow { display: flex; gap: 14px; flex-wrap: wrap; }
+.mxcol { flex: 1 1 220px; min-width: 200px; }
+.mxlab {
+  font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--dim); margin-bottom: 6px;
+}
+.mxsvg svg { display: block; width: 100%; height: 110px; }
+.mxregimes {
+  display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px;
+  padding-top: 9px; border-top: 1px solid var(--line);
+  font-size: 11px; color: var(--dim);
+}
+.mxregimes b { font-weight: 400; }
+
+/* ─────────────────────────────────────────────── hunt clock ── */
+.hclock {
+  font-size: 27px; font-weight: 700; letter-spacing: 2px; color: var(--dim);
+  margin: 6px 0 2px; font-variant-numeric: tabular-nums;
+}
+.hclock.open { color: var(--green); }
+.hclocksub { font-size: 11px; color: var(--dim); letter-spacing: 0.5px; }
+.hprog { height: 3px; background: var(--line); margin: 12px 0 8px; }
+.hprog i {
+  display: block; height: 100%; width: 0; background: var(--green);
+  transition: width 0.6s linear;
+}
+.hnext { font-size: 10.5px; color: var(--dim); line-height: 1.8; letter-spacing: 0.4px; }
+.hnext .nx { color: var(--cyan); }
+
 /* ─────────────────────────────────────────────── responsive ── */
 @media (max-width: 719px) {
   body { padding: 12px 12px 18px; font-size: 12.5px; }
@@ -312,6 +442,9 @@ body.standby #standby { display: flex; }
   .chartbox-radar { height: 240px; }
   .logbox { height: 170px; }
   button, th button { min-height: 44px; }
+  .btn-xs { min-height: 0; }
+  .statgrid { grid-template-columns: repeat(2, 1fr); }
+  .hclock { font-size: 22px; }
   .regname { font-size: 22px; }
   .band { margin-left: 2px; margin-right: 2px; }
 }
@@ -337,6 +470,7 @@ body.standby #standby { display: flex; }
     <span id="clock" aria-label="UTC clock">--:--:-- UTC</span>
     <button id="rainToggle" type="button" aria-pressed="false" aria-label="toggle matrix rain">rain</button>
     <span class="chip" id="chipHunt" hidden>hunt <b>—</b></span>
+    <span class="chip" id="chipNext" hidden>next hunt <b>—</b></span>
     <span class="chip" id="chipGeo" hidden>—</span>
   </header>
 
@@ -355,6 +489,7 @@ body.standby #standby { display: flex; }
         <span>week<b id="stWeek">—</b></span>
         <span>month<b id="stMonth">—</b></span>
         <span>equity<b id="stEq" class="g">—</b></span>
+        <span id="eqSrc" class="dim" hidden>flat · awaiting first realized fill</span>
       </div>
     </section>
 
@@ -422,7 +557,13 @@ body.standby #standby { display: flex; }
 
     <!-- ── row C · trades ── -->
     <section class="panel s8" id="trades-panel" aria-label="recent trades">
-      <h2>trades · last 20 <span class="hval dim" id="tcount">awaiting</span></h2>
+      <h2>trades · last 20
+        <span style="display:inline-flex;align-items:center;gap:8px;">
+          <span class="hval dim" id="tcount">awaiting</span>
+          <button class="btn-xs" id="exportBtn" type="button"
+                  title="download these rows as CSV" disabled>export</button>
+        </span>
+      </h2>
       <div class="scroll tscroll">
         <table id="ttable">
           <caption class="sr-only">Last 20 closed trades, latest first. Click a column header to sort.</caption>
@@ -438,7 +579,7 @@ body.standby #standby { display: flex; }
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="7" class="dim">awaiting telemetry…</td></tr>
+            <tr><td colspan="7"><div class="empty await"><span class="led led-standby"></span>awaiting telemetry…</div></td></tr>
           </tbody>
         </table>
       </div>
@@ -448,7 +589,7 @@ body.standby #standby { display: flex; }
     <div class="s4 rstack">
       <section class="panel" id="brokers-panel" aria-label="brokers">
         <h2>brokers</h2>
-        <div id="brokerRows"><div class="brow dim">awaiting telemetry…</div></div>
+        <div id="brokerRows"><div class="brow dim await">awaiting telemetry…</div></div>
       </section>
 
       <section class="panel" id="streak-panel" aria-label="win streak">
@@ -459,7 +600,7 @@ body.standby #standby { display: flex; }
 
       <section class="panel" id="ledger-panel" aria-label="paper track record">
         <h2>paper ledger <span class="hval dim" id="ledgerMeta">append-only</span></h2>
-        <div id="ledgerRows"><div class="lrow dim">reading docs/TRACK_RECORD.md…</div></div>
+        <div id="ledgerRows"><div class="lrow dim await">reading docs/TRACK_RECORD.md…</div></div>
         <div class="ledgerfoot" id="ledgerFoot">every UTC day gets one row · win or lose</div>
       </section>
 
@@ -470,6 +611,40 @@ body.standby #standby { display: flex; }
     </div>
 
   </main>
+
+    <!-- ── row D · analytics + hunt clock ── -->
+    <section class="panel s8" id="analytics-panel" aria-label="trade analytics">
+      <h2>analytics · realized fills <span class="hval dim" id="mxMeta">—</span></h2>
+      <div class="statgrid" id="mxStats">
+        <div class="statcell"><span class="k">profit factor</span><span class="v" id="mxPf">—</span></div>
+        <div class="statcell"><span class="k">win rate</span><span class="v" id="mxWr">—</span></div>
+        <div class="statcell"><span class="k">expectancy / trade</span><span class="v" id="mxExp">—</span></div>
+        <div class="statcell"><span class="k">max drawdown</span><span class="v r" id="mxMdd">—</span></div>
+        <div class="statcell"><span class="k">avg win</span><span class="v g" id="mxAw">—</span></div>
+        <div class="statcell"><span class="k">avg loss</span><span class="v r" id="mxAl">—</span></div>
+        <div class="statcell"><span class="k">best / worst</span><span class="v" id="mxBw">—</span></div>
+        <div class="statcell"><span class="k">streaks W / L</span><span class="v" id="mxStreak">—</span></div>
+      </div>
+      <div class="mxrow">
+        <div class="mxcol">
+          <div class="mxlab">pnl distribution · $</div>
+          <div class="mxsvg" id="mxHist"></div>
+        </div>
+        <div class="mxcol">
+          <div class="mxlab">underwater · % from peak</div>
+          <div class="mxsvg" id="mxUw"></div>
+        </div>
+      </div>
+      <div class="mxregimes" id="mxRegimes"></div>
+    </section>
+
+    <section class="panel s4" id="huntclock-panel" aria-label="hunt window clock">
+      <h2>hunt clock</h2>
+      <div class="hclock" id="hclockVal">—</div>
+      <div class="hclocksub" id="hclockSub">syncing…</div>
+      <div class="hprog" aria-hidden="true"><i id="hprogFill"></i></div>
+      <div class="hnext" id="hclockNext"></div>
+    </section>
 
   <!-- ── footer ── -->
   <footer id="footer">
@@ -516,11 +691,72 @@ const setSignColor = (el, v) => {
   el.classList.add(v > 0 ? "g" : v < 0 ? "r" : "dim");
 };
 
+/* ── animated number ticker (subtle; respects prefers-reduced-motion) ── */
+function tickTo(el, to, fmt) {
+  const from = el._val === undefined ? to : el._val;
+  el._val = to;
+  if (RM || Math.abs(to - from) < 0.005) { el.textContent = fmt(to); return; }
+  if (el._raf) cancelAnimationFrame(el._raf);
+  const t0 = performance.now(), dur = 550;
+  const step = t => {
+    const p = clamp((t - t0) / dur, 0, 1), e = 1 - Math.pow(1 - p, 3);
+    el.textContent = fmt(from + (to - from) * e);
+    if (p < 1) el._raf = requestAnimationFrame(step);
+  };
+  el._raf = requestAnimationFrame(step);
+}
+
 /* ── offline LED ── */
 const setOffline = on => $("offline").classList.toggle("on", on);
 
 /* ── UTC clock ── */
 function tickClock() { $("clock").textContent = new Date().toISOString().slice(11, 19) + " UTC"; }
+
+/* ─────────────────────────────────────────── hunt window clock ── */
+let HUNT = null; // {start, end} UTC hours, parsed from state.hunt_window
+function parseHuntWindow(s) {
+  const m = /(\d{1,2})\s*-\s*(\d{1,2})/.exec(String(s || ""));
+  if (!m) return null;
+  const a = +m[1], b = +m[2];
+  return (a >= 0 && a <= 23 && b > a && b <= 24) ? { start: a, end: b } : null;
+}
+const pad2 = n => String(n).padStart(2, "0");
+function fmtHMS(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  return pad2(Math.floor(sec / 3600)) + ":" +
+         pad2(Math.floor((sec % 3600) / 60)) + ":" + pad2(sec % 60);
+}
+function huntTick() {
+  if (!HUNT) return;
+  const now = new Date();
+  const h = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
+  const open = h >= HUNT.start && h < HUNT.end;
+  const el = $("hclockVal"), sub = $("hclockSub"), fill = $("hprogFill");
+  const chip = $("chipNext");
+  const span = (HUNT.end - HUNT.start) * 3600;
+  if (open) {
+    const left = (HUNT.end - h) * 3600;
+    el.textContent = "OPEN";
+    el.classList.add("open");
+    sub.textContent = "window closes in " + fmtHMS(left);
+    fill.style.width = clamp((h - HUNT.start) * 3600 / span * 100, 0, 100).toFixed(1) + "%";
+    chip.hidden = false; chip.innerHTML = "window <b>" + fmtHMS(left) + "</b>";
+  } else {
+    const next = new Date(now);
+    next.setUTCHours(HUNT.start, 0, 0, 0);
+    if (h >= HUNT.start) next.setUTCDate(next.getUTCDate() + 1);
+    const diff = (next - now) / 1000;
+    el.textContent = fmtHMS(diff);
+    el.classList.remove("open");
+    sub.textContent = "until hunt window opens";
+    fill.style.width = "0%";
+    chip.hidden = false; chip.innerHTML = "next hunt <b>" + fmtHMS(diff) + "</b>";
+    const f = d => d.toLocaleDateString("en-US", { month: "short", day: "2-digit", timeZone: "UTC" });
+    $("hclockNext").innerHTML = "next windows (UTC) · " +
+      [0, 1, 2].map(k => '<span class="nx">' +
+        f(new Date(next.getTime() + k * 864e5)) + " " + pad2(HUNT.start) + ":00</span>").join(" · ");
+  }
+}
 
 /* ─────────────────────────────────────────────── matrix rain ── */
 const RAIN = $("rain"), RX = RAIN.getContext("2d");
@@ -750,11 +986,16 @@ function sortTrades() {
     return dir * r;
   });
 }
-function renderTrades() {
+function renderTrades(mode) {
   sortTrades();
   const tb = $("tbody");
-  if (!TRADES.length) { tb.innerHTML = '<tr><td colspan="7" class="dim">no trades yet</td></tr>'; }
-  else {
+  if (!TRADES.length) {
+    tb.innerHTML = '<tr><td colspan="7"><div class="empty">' +
+      '<span class="led led-standby"></span>' +
+      (mode === "live"
+        ? "no fills yet — journal open, first hunt pending"
+        : "no trades yet") + '</div></td></tr>';
+  } else {
     tb.innerHTML = TRADES.map(t => {
       const n = parseNum(t.pnl);
       const pc = n === null ? "zero" : n > 0 ? "pos" : n < 0 ? "neg" : "zero";
@@ -771,6 +1012,7 @@ function renderTrades() {
     }).join("");
   }
   $("tcount").textContent = TRADES.length + " rows";
+  $("exportBtn").disabled = !TRADES.length;
   document.querySelectorAll("#ttable thead th").forEach(th => {
     const active = th.dataset.k === sortState.key;
     th.setAttribute("aria-sort", active ? (sortState.dir === 1 ? "ascending" : "descending") : "none");
@@ -785,6 +1027,24 @@ document.querySelector("#ttable thead").addEventListener("click", e => {
   renderTrades();
 });
 
+/* ── CSV export (client-side, from the loaded rows) ── */
+$("exportBtn").addEventListener("click", () => {
+  if (!TRADES.length) return;
+  const keys = [...new Set(TRADES.flatMap(t => Object.keys(t)))];
+  const cell = v => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const csv = [keys.join(",")]
+    .concat(TRADES.map(t => keys.map(k => cell(t[k])).join(",")))
+    .join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = "gold-reaper-trades.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
 /* ─────────────────────────────────────────────── log tail ── */
 function addLog(t, line) {
   const box = $("log");
@@ -794,9 +1054,9 @@ function addLog(t, line) {
   // severity coloring: fills/targets green, failures red, heartbeats dim
   const lo = msg.toLowerCase();
   let sev = "";
-  if (/order executed|target filled|block target|banked/.test(lo)) sev = "ok";
-  else if (/error|reject|fail|latch|abort/.test(lo)) sev = "bad";
-  else if (/heartbeat|waiting|standby|clear/.test(lo)) sev = "dim";
+  if (/order executed|target filled|block target|banked|fill \+|reaper online/.test(lo)) sev = "ok";
+  else if (/error|reject|fail|latch|abort|offline/.test(lo)) sev = "bad";
+  else if (/heartbeat|waiting|standby|clear|skip/.test(lo)) sev = "dim";
   const div = document.createElement("div");
   div.className = "ln" + (sev ? " ln-" + sev : "");
   div.innerHTML = `<span class="lt">${esc(ts)}</span><span class="lm">${esc(msg)}</span><span class="cur">▊</span>`;
@@ -808,6 +1068,91 @@ function addLog(t, line) {
 if (!window.MOCK_DATA) {  // static Pages build has no SSE endpoint — skip
   const es = new EventSource("/api/stream");
   es.onmessage = e => { try { const d = JSON.parse(e.data); addLog(d.t || "", d.line || ""); } catch (_) {} };
+}
+
+/* ─────────────────────────────── analytics (PF · DD · histogram) ── */
+function svgHist(h) {
+  const counts = h.counts || [], labels = h.labels || [], pos = h.pos || [];
+  const W = 300, H = 110, padB = 14, padT = 8;
+  if (!counts.length)
+    return '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+      '<text x="' + W / 2 + '" y="' + H / 2 + '" text-anchor="middle" fill="#5E6A66" font-size="9">no realized fills yet</text></svg>';
+  const maxC = Math.max(1, ...counts);
+  const bw = W / counts.length;
+  const bars = counts.map((c, i) => {
+    const bh = (H - padB - padT) * c / maxC;
+    const x = i * bw + 1.5, y = H - padB - bh;
+    const col = pos[i] ? "#00FF9C" : "#FF5555";
+    return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' +
+        (bw - 3).toFixed(1) + '" height="' + bh.toFixed(1) +
+        '" fill="' + col + '" opacity="' + (c ? "0.72" : "0.10") + '"></rect>' +
+      (c ? '<text x="' + (i * bw + bw / 2).toFixed(1) + '" y="' + (y - 3).toFixed(1) +
+        '" text-anchor="middle" fill="' + col + '" font-size="9">' + c + '</text>' : "");
+  }).join("");
+  return '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="pnl distribution histogram">' +
+    '<line x1="0" y1="' + (H - padB) + '" x2="' + W + '" y2="' + (H - padB) + '" stroke="#1A2422"></line>' + bars +
+    '<text x="0" y="' + (H - 2) + '" fill="#5E6A66" font-size="8.5">' + esc(labels[0] || "") + '</text>' +
+    '<text x="' + W + '" y="' + (H - 2) + '" text-anchor="end" fill="#5E6A66" font-size="8.5">' + esc(labels[labels.length - 1] || "") + '</text></svg>';
+}
+function svgUnderwater(series) {
+  const W = 300, H = 110, padT = 8, padB = 14;
+  if (!series || !series.length)
+    return '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+      '<text x="' + W / 2 + '" y="' + H / 2 + '" text-anchor="middle" fill="#5E6A66" font-size="9">no realized fills yet</text></svg>';
+  const min = Math.min(-0.001, ...series);
+  const X = i => series.length === 1 ? W / 2 : i / (series.length - 1) * W;
+  const Y = v => padT + (v / min) * (H - padT - padB); // v <= 0, min < 0
+  const pts = series.map((v, i) => X(i).toFixed(1) + "," + Y(v).toFixed(1)).join(" ");
+  const minV = Math.min(...series), minI = series.indexOf(minV);
+  return '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="drawdown underwater curve">' +
+    '<line x1="0" y1="' + padT + '" x2="' + W + '" y2="' + padT + '" stroke="#1A2422"></line>' +
+    '<polygon points="0,' + padT + " " + pts + " " + W + "," + padT + '" fill="rgba(255,85,85,0.15)"></polygon>' +
+    '<polyline points="' + pts + '" fill="none" stroke="#FF5555" stroke-width="1.3"></polyline>' +
+    '<text x="' + X(minI).toFixed(1) + '" y="' + (Y(minV) + 10).toFixed(1) +
+    '" text-anchor="middle" fill="#FF5555" font-size="9">' + minV.toFixed(2) + '%</text></svg>';
+}
+function renderMetrics(m) {
+  if (!m || m.source === undefined) return;
+  const live = m.source === "live";
+  $("mxMeta").textContent = live
+    ? (m.n ? m.n + " realized fills · live" : "live · awaiting first fill")
+    : m.n + " fills · mock session";
+  if (!m.n) {
+    ["mxPf", "mxWr", "mxExp", "mxMdd", "mxAw", "mxAl", "mxBw", "mxStreak"]
+      .forEach(id => { $(id).textContent = "—"; });
+    $("mxHist").innerHTML = '<div class="empty"><span class="led led-standby"></span>' +
+      "no realized fills yet — analytics appear after the first paper close</div>";
+    $("mxUw").innerHTML = "";
+    $("mxRegimes").innerHTML = "";
+    return;
+  }
+  const set = (id, v) => { $(id).textContent = v; };
+  const pfEl = $("mxPf");
+  pfEl.textContent = (m.pf === null || m.pf === undefined) ? "∞" : m.pf.toFixed(2);
+  pfEl.title = (m.pf === null || m.pf === undefined)
+    ? "undefined with zero losing trades — tiny sample" : "gross win / gross loss";
+  set("mxWr", m.win_rate === null || m.win_rate === undefined ? "—" : m.win_rate.toFixed(1) + "%");
+  set("mxExp", signed(m.expectancy) + " $");
+  set("mxMdd", (m.max_drawdown_pct || 0).toFixed(2) + "% · $" + fmtMoney(Math.abs(m.max_drawdown || 0)));
+  set("mxAw", m.avg_win === null || m.avg_win === undefined ? "—" : "$" + fmtMoney(m.avg_win));
+  set("mxAl", m.avg_loss === null || m.avg_loss === undefined ? "—" : "$" + fmtMoney(m.avg_loss));
+  set("mxBw", (m.best === null ? "—" : signed(m.best)) + " / " + (m.worst === null ? "—" : signed(m.worst)));
+  set("mxStreak", (m.longest_win_streak || 0) + " / " + (m.longest_loss_streak || 0));
+  $("mxHist").innerHTML = svgHist(m.histogram || {});
+  $("mxUw").innerHTML = svgUnderwater(m.underwater);
+  const reg = m.by_regime || {};
+  $("mxRegimes").innerHTML = Object.keys(reg).map(k => {
+    const r = reg[k];
+    const cls = r.net > 0 ? "g" : r.net < 0 ? "r" : "dim";
+    return '<span>' + esc(k) + ' <b>' + r.n + 't</b> <b class="' + cls + '">' +
+      signed(r.net) + '$</b></span>';
+  }).join("") || '<span class="dim">no regime attribution</span>';
+}
+async function fetchMetrics() {
+  try {
+    const r = await fetch("/api/metrics", { cache: "no-store" });
+    renderMetrics(await r.json());
+  } catch (_) { /* offline LED already surfaces it */ }
 }
 
 /* ───────────────────────────────────────── paper ledger ── */
@@ -867,14 +1212,17 @@ function renderState(s) {
   // equity panel
   updateEqChart(s.equity_history);
   const eq = Number(s.equity);
-  $("eqNow").textContent = Number.isFinite(eq) ? "$" + fmtMoney(eq) : "—";
+  tickTo($("eqNow"), Number.isFinite(eq) ? eq : 0, v => "$" + fmtMoney(v));
   setSignColor($("stDay"), Number(s.day_pnl) || 0);
   $("stDay").textContent = signed(s.day_pnl || 0);
   setSignColor($("stWeek"), Number(s.week_pnl) || 0);
   $("stWeek").textContent = signed(s.week_pnl || 0);
   setSignColor($("stMonth"), Number(s.month_pnl) || 0);
   $("stMonth").textContent = signed(s.month_pnl || 0);
-  $("stEq").textContent = Number.isFinite(eq) ? "$" + fmtMoney(eq) : "—";
+  tickTo($("stEq"), Number.isFinite(eq) ? eq : 0, v => "$" + fmtMoney(v));
+  $("eqSrc").hidden = s.equity_source !== "flat";
+  HUNT = parseHuntWindow(s.hunt_window) || HUNT;
+  huntTick();
 
   // position · gauges · radar
   renderPosition(s.position);
@@ -919,7 +1267,7 @@ async function fetchTrades() {
     const r = await fetch("/api/trades", { cache: "no-store" });
     const j = await r.json();
     TRADES = Array.isArray(j.rows) ? j.rows : [];
-    renderTrades();
+    renderTrades(j.mode);
     setOffline(false);
   } catch (_) { setOffline(true); }
 }
@@ -941,7 +1289,7 @@ window.addEventListener("keydown", e => {
 buildGauges();
 buildEqChart();
 buildRadarChart();
-tickClock(); setInterval(tickClock, 1000);
+tickClock(); setInterval(() => { tickClock(); huntTick(); }, 1000);
 rainSize();
 if (rainPref === "1") setRain(true, false);
 else if (rainPref === "0") setRain(false, false);
@@ -952,14 +1300,16 @@ if (window.MOCK_DATA) {
      through the exact same render pipeline, then idle */
   renderState(window.MOCK_DATA.state);
   TRADES = Array.isArray(window.MOCK_DATA.trades) ? window.MOCK_DATA.trades : [];
-  renderTrades();
+  renderTrades("mock");
   renderLedger(window.MOCK_DATA.track_record);
+  if (window.MOCK_DATA.metrics) renderMetrics(window.MOCK_DATA.metrics);
   const lines = Array.isArray(window.MOCK_LOG) ? window.MOCK_LOG : [];
   lines.forEach((line, i) => setTimeout(() => addLog("", line), 400 + i * 550));
 } else {
-  fetchState();  fetchTrades();  fetchLedger();
+  fetchState();  fetchTrades();  fetchLedger();  fetchMetrics();
   setInterval(fetchState, 5000);     // auto-refresh state every 5s
   setInterval(fetchTrades, 15000);   // auto-refresh trades every 15s
+  setInterval(fetchMetrics, 30000);  // analytics refresh every 30s
   setInterval(fetchLedger, 60000);   // ledger appends once a day — 60s is plenty
 }
 

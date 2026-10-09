@@ -25,8 +25,16 @@ python dashboard/app.py          # http://localhost:8080
 ```
 
 Auto-detects a running bot: if `data/apex_risk.json` exists it renders live
-state; otherwise a seeded mock session. Includes SSE log tail, SVG equity
-curve, position card, trades table, matrix rain canvas.
+state; otherwise a seeded mock session. Includes SSE log tail (seeds recent
+audit history, then tails live), equity curve, position card, trades table
+with CSV export, trade analytics (profit factor, win rate, expectancy, max
+drawdown, PnL distribution histogram, underwater curve, per-regime split),
+hunt-window clock with next-3-windows countdown, and matrix rain canvas.
+
+Honesty contract: in live mode an empty journal renders empty states
+("no fills yet") and a flat equity line at the real balance - never mock
+rows or a fake curve. Endpoints: `/api/state`, `/api/trades`, `/api/metrics`,
+`/api/track_record`, `/api/stream`.
 
 ## Layer 3 — Record the video
 
