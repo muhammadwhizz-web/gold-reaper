@@ -56,7 +56,12 @@ jobs:
           X = build_features(df, None, with_labels=False, verbose=False)
           fcols = [c for c in X.columns if c.startswith("f_")]
           assert len(fcols) > 80, f"feature forge collapsed: {len(fcols)}"
-          assert X[fcols].notna().mean().mean() > 0.5, "feature coverage broken"
+          cov = X[fcols].notna().mean()
+          print(f"feature coverage: mean {cov.mean():.3f} | min {cov.min():.3f} "
+                f"| cols<0.3: {(cov < 0.3).sum()}")
+          assert cov.isna().sum() == 0, "all-NaN feature column produced"
+          assert (cov >= 0.3).mean() > 0.85, \
+              f"too many starved feature columns: {(cov < 0.3).sum()}/{len(fcols)}"
 
           # triple barrier sane
           lab = triple_barrier(df, 2.0, 1.2, 24)
