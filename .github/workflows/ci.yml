@@ -41,7 +41,7 @@ jobs:
           from core.indicators import ema, rsi, atr, adx
 
           # synthetic 1h frame
-          n = 900
+          n = 1600
           rng = np.random.default_rng(666)
           close = pd.Series(np.cumsum(rng.normal(0, 3, n)) + 2000)
           df = pd.DataFrame({"open": close.shift(1).fillna(close.iloc[0]),
