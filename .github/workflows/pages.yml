@@ -24,11 +24,13 @@ jobs:
         run: |
           mkdir -p _site
           cp dashboard/static/index.html _site/index.html
+          cp -r dashboard/static/vendor _site/vendor
+          cp assets/icon.png _site/favicon.ico
           cp docs/banner.png _site/banner.png
           cp assets/social-preview.png _site/social-preview.png
           python3 - <<'PY'
           # generate the embedded mock dataset so the page runs backend-free
-          import json, random
+          import json, random, pathlib
           rng = random.Random(666)
           eq, hist = 10000.0, []
           for _ in range(120):
@@ -46,9 +48,33 @@ jobs:
                   "side": side,
                   "size_oz": f"{round(rng.uniform(0.02, 0.05), 3):.3f}",
                   "entry": f"{px:,.2f}", "pnl": f"{pnl:+.2f}",
-                  "regime": rng.choice(["TREND_UP", "TREND_DOWN", "RANGE"])})
+                  "regime": rng.choice(["TREND_UP", "TREND_DOWN", "RANGE"]),
+                  "session": rng.choice(["LONDON_NY_OVERLAP", "LONDON"])})
+          dims = [{"name": n, "value": round(rng.uniform(0.25, 0.95), 2),
+                   "active": rng.random() < 0.8}
+                  for n in ("trend", "order-flow", "volatility", "structure",
+                            "statistical", "session", "microstructure",
+                            "cross-asset", "news", "regime")]
+          # parse the append-only ledger so the Pages demo shows the real one
+          led_rows = []
+          tr = pathlib.Path("docs/TRACK_RECORD.md")
+          if tr.exists():
+              for line in tr.read_text(encoding="utf-8").splitlines():
+                  if not line.startswith("|") or "---" in line or "date (UTC)" in line:
+                      continue
+                  c = [x.strip() for x in line.strip("|").split("|")]
+                  if len(c) >= 3:
+                      led_rows.append({"date": c[0], "trades": c[1], "net": c[2],
+                                       "equity": c[3] if len(c) > 3 else "-",
+                                       "note": c[5] if len(c) > 5 else ""})
+          total = round(sum(float(r["net"].replace("+", "")) for r in led_rows
+                            if r["net"].lstrip("+").replace(".", "").isdigit()), 2)
+          track = {"rows": led_rows[::-1][:10], "days": len(led_rows),
+                   "total_net": total,
+                   "source": "docs/TRACK_RECORD.md (append-only)"}
           mock = {"state": {
-              "mode": "mock", "equity": hist[-1], "day_pnl": day,
+              "mode": "mock", "ts": "2026-10-09T12:04:33+00:00",
+              "equity": hist[-1], "day_pnl": day,
               "week_pnl": round(day + 61.80, 2), "month_pnl": round(day + 214.55, 2),
               "block_pnl": 23.41, "block_target": 20, "block_key": "2026-10-09T12",
               "recovery": False, "latched": False, "wins": 1, "losses": 0,
@@ -56,10 +82,20 @@ jobs:
               "position": {"side": "LONG", "size_oz": 0.028, "entry": 2418.60,
                            "sl": 2417.90, "tp": 2431.20, "opened": "12:04:33 UTC",
                            "be": True},
-              "session": "london/ny overlap", "regime": "TREND_UP"}, "trades": trades}
+              "session": "london/ny overlap",
+              "regime": {"name": "TREND_UP", "confidence": 0.71, "engine": "rules"},
+              "dims": dims,
+              "brokers": [
+                  {"name": "MT5 (Exness)", "state": "standby", "latency_ms": None},
+                  {"name": "Bitget", "state": "standby", "latency_ms": None},
+                  {"name": "Paper", "state": "up", "latency_ms": 1}],
+              "streak": 1, "hunt_window": "12-14 UTC",
+              "geometry": "SL 1.2xATR \u00b7 TP 2.0R \u00b7 risk 1%"},
+              "trades": trades, "track_record": track}
           mock_log = [
+              "12:04:31 | scan bar 2415.80 atr 3.4 adx 27 regime TREND_UP",
               "12:04:33 | order executed XAUUSD LONG 0.028 oz @ 2418.60",
-              "12:04:33 | stop 2414.28 target 2431.20 r:r 2.67",
+              "12:04:33 | stop 2414.28 target 2431.20 r:r 2.0",
               "12:35:02 | protective move stop -> breakeven 2417.90",
               "13:02:48 | trailing engaged +1.5R trail 1.2x atr",
               "13:44:19 | target filled 2431.20 pnl +23.41 (+0.23%)",
@@ -68,9 +104,13 @@ jobs:
           with open("_site/mock-data.js", "w") as f:
               f.write("window.MOCK_DATA = " + json.dumps(mock) + ";\n")
               f.write("window.MOCK_LOG = " + json.dumps(mock_log) + ";\n")
-          print("mock dataset embedded")
+          print("mock dataset embedded (new contract + ledger)")
           PY
-          cat > _site/.nojekyll <<EOF
+          # inject the static dataset only into the Pages copy (the FastAPI
+          # page stays network-driven)
+          sed -i 's|<script src="vendor/chart.umd.min.js"></script>|<script src="vendor/chart.umd.min.js"></script><script src="mock-data.js"></script>|' _site/index.html
+          grep -c 'mock-data.js' _site/index.html
+          cat > _site/.nojekyll <<'EOF'
           EOF
 
       - name: Upload artifact

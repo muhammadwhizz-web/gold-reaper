@@ -74,6 +74,37 @@ def _equity_history_mock(points: int = 120) -> list[float]:
     return out
 
 
+def _equity_history_from_trades(points: int = 120) -> list[float] | None:
+    """Real cumulative equity curve from the paper journal (trades.csv).
+    Returns None when there are no closed trades yet - callers fall back
+    to the seeded mock tail so the demo still renders."""
+    f = DATA / "trades.csv"
+    if not f.exists():
+        return None
+    try:
+        rows = list(csv.DictReader(f.open(newline="", encoding="utf-8")))
+        pnls = []
+        for r in rows:
+            try:
+                pnls.append(float(str(r.get("pnl", r.get("pnl_usd", 0)))
+                                  .replace("+", "").replace(",", "")))
+            except (TypeError, ValueError):
+                continue
+        if not pnls:
+            return None
+        eq, out = 10_000.0, []
+        # stepwise curve: one point per trade, then pad to `points` resolution
+        for p in pnls:
+            eq += p
+            out.append(round(eq, 2))
+        if len(out) < points:
+            pad = [out[0] - (out[0] - 10_000.0) * k / points for k in range(points - len(out))]
+            out = pad + out
+        return out[-points:]
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def state_payload() -> dict:
     """Real bot state if present, else a coherent mock session."""
     risk_file = DATA / "apex_risk.json"
@@ -94,7 +125,8 @@ def state_payload() -> dict:
                 "latched": risk.get("latched", False),
                 "wins": risk.get("wins", 0),
                 "losses": risk.get("losses", 0),
-                "equity_history": _equity_history_mock(),
+                "equity_history": _equity_history_from_trades()
+                                  or _equity_history_mock(),
                 "position": None,
                 "session": "london/ny overlap",
                 "regime": {"name": "TREND_UP", "confidence": 0.71,
@@ -137,6 +169,34 @@ def state_payload() -> dict:
         "hunt_window": "12-14 UTC",
         "geometry": "SL 1.2xATR · TP 2.0R · risk 1%",
     }
+
+
+def track_record_payload() -> dict:
+    """Parse the append-only paper ledger (docs/TRACK_RECORD.md)."""
+    f = ROOT / "docs" / "TRACK_RECORD.md"
+    rows: list[dict] = []
+    if f.exists():
+        try:
+            for line in f.read_text(encoding="utf-8").splitlines():
+                if not line.startswith("|") or "---" in line or "date (UTC)" in line:
+                    continue
+                cells = [c.strip() for c in line.strip("|").split("|")]
+                if len(cells) >= 3:
+                    rows.append({"date": cells[0], "trades": cells[1],
+                                 "net": cells[2],
+                                 "equity": cells[3] if len(cells) > 3 else "-",
+                                 "note": cells[5] if len(cells) > 5 else ""})
+        except Exception:  # noqa: BLE001
+            pass
+    total = 0.0
+    for r in rows:
+        try:
+            total += float(r["net"].replace("+", ""))
+        except ValueError:
+            continue
+    return {"rows": rows[::-1][:10], "days": len(rows),
+            "total_net": round(total, 2),
+            "source": "docs/TRACK_RECORD.md (append-only)"}
 
 
 def trades_payload(limit: int = 20) -> list[dict]:
@@ -204,6 +264,11 @@ def api_state() -> JSONResponse:
 @app.get("/api/trades")
 def api_trades() -> JSONResponse:
     return JSONResponse({"rows": trades_payload()})
+
+
+@app.get("/api/track_record")
+def api_track_record() -> JSONResponse:
+    return JSONResponse(track_record_payload())
 
 
 async def _stream():

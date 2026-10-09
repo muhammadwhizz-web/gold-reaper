@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="GOLD//REAPER ops console — live trading telemetry for the XAU/USD bot.">
 <title>GOLD//REAPER — ops console</title>
-<link rel="icon" type="image/png" href="/favicon.ico">
+<link rel="icon" type="image/png" href="favicon.ico">
 <script src="vendor/chart.umd.min.js"></script>
 <style>
 /* ─────────────────────────────────────────────── palette / base ── */
@@ -247,6 +247,16 @@ td.dim, .dim td { color: var(--dim); }
 .brow + .brow { border-top: 1px solid var(--line); }
 .bname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .blat { color: var(--dim); font-size: 11px; }
+/* paper ledger rows (append-only track record) */
+.lrow { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 11.5px; }
+.lrow + .lrow { border-top: 1px solid var(--line); }
+.lrow .ld { color: var(--dim); min-width: 74px; }
+.lrow .ln2 { color: var(--fg2); min-width: 34px; text-align: right; }
+.lrow .lp { flex: 1; text-align: right; }
+.lrow .lp.pos { color: var(--green); }
+.lrow .lp.neg { color: var(--red); }
+.lrow .lp.zero { color: var(--dim); }
+.ledgerfoot { font-size: 10.5px; color: var(--dim); margin-top: 6px; letter-spacing: 0.4px; }
 #streakNum { color: var(--green); }
 #streakNum.zero { color: var(--dim); }
 #streakNum.neg  { color: var(--red); }
@@ -257,6 +267,9 @@ td.dim, .dim td { color: var(--dim); }
 .ln { white-space: pre-wrap; word-break: break-word; padding: 1px 0; }
 .lt { color: var(--dim); margin-right: 8px; }
 .lm { color: var(--text); }
+.ln-ok .lm { color: var(--green); }
+.ln-bad .lm { color: var(--red); }
+.ln-dim .lm { color: var(--dim); }
 .cur { color: var(--green); animation: blink 1.1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
@@ -392,6 +405,7 @@ body.standby #standby { display: flex; }
             <path class="gfill"  id="g2fill"  d=""></path>
             <text class="gval" id="g2val" x="100" y="88" text-anchor="middle" fill="#5E6A66">—</text>
             <text class="gsub" id="gsub2" x="100" y="106" text-anchor="middle">target $120</text>
+            <line id="g2tick" stroke="#5E6A66" stroke-width="1.5"></line>
           </svg>
           <div class="glabel">day → $120</div>
         </div>
@@ -441,6 +455,12 @@ body.standby #standby { display: flex; }
         <h2>win streak</h2>
         <div class="big" id="streakNum">—</div>
         <div class="streaksub" id="streakSub">W— · L—</div>
+      </section>
+
+      <section class="panel" id="ledger-panel" aria-label="paper track record">
+        <h2>paper ledger <span class="hval dim" id="ledgerMeta">append-only</span></h2>
+        <div id="ledgerRows"><div class="lrow dim">reading docs/TRACK_RECORD.md…</div></div>
+        <div class="ledgerfoot" id="ledgerFoot">every UTC day gets one row · win or lose</div>
       </section>
 
       <section class="panel" id="log-panel" aria-label="event stream">
@@ -553,10 +573,12 @@ function buildGauges() {
   $("g1track").setAttribute("d", arcPath(74, A0, A0 + SWEEP));
   $("g2track").setAttribute("d", arcPath(74, A0, A0 + SWEEP));
   const rad = 310 * Math.PI / 180; // target tick at 100% of the 150% scale
-  $("g1tick").setAttribute("x1", (100 + 62 * Math.cos(rad)).toFixed(1));
-  $("g1tick").setAttribute("y1", (98 + 62 * Math.sin(rad)).toFixed(1));
-  $("g1tick").setAttribute("x2", (100 + 86 * Math.cos(rad)).toFixed(1));
-  $("g1tick").setAttribute("y2", (98 + 86 * Math.sin(rad)).toFixed(1));
+  for (const g of ["g1", "g2"]) {
+    $(g + "tick").setAttribute("x1", (100 + 62 * Math.cos(rad)).toFixed(1));
+    $(g + "tick").setAttribute("y1", (98 + 62 * Math.sin(rad)).toFixed(1));
+    $(g + "tick").setAttribute("x2", (100 + 86 * Math.cos(rad)).toFixed(1));
+    $(g + "tick").setAttribute("y2", (98 + 86 * Math.sin(rad)).toFixed(1));
+  }
 }
 function drawGauge(fillEl, valEl, frac, color, text, textColor) {
   const f = clamp(frac, 0.004, 1);
@@ -769,16 +791,51 @@ function addLog(t, line) {
   const m = /^(\d{2}:\d{2}:\d{2}) \| (.*)$/.exec(String(line));
   const ts = m ? m[1] : (t || "");
   const msg = m ? m[2] : String(line);
+  // severity coloring: fills/targets green, failures red, heartbeats dim
+  const lo = msg.toLowerCase();
+  let sev = "";
+  if (/order executed|target filled|block target|banked/.test(lo)) sev = "ok";
+  else if (/error|reject|fail|latch|abort/.test(lo)) sev = "bad";
+  else if (/heartbeat|waiting|standby|clear/.test(lo)) sev = "dim";
   const div = document.createElement("div");
-  div.className = "ln";
+  div.className = "ln" + (sev ? " ln-" + sev : "");
   div.innerHTML = `<span class="lt">${esc(ts)}</span><span class="lm">${esc(msg)}</span><span class="cur">▊</span>`;
   const prev = box.querySelector(".cur"); if (prev) prev.remove();
   box.prepend(div); // newest on top
   while (box.children.length > 120) box.lastElementChild.remove(); // cap 120
   if (box.scrollTop <= 4) box.scrollTop = 0; // pin to newest only if at top
 }
-const es = new EventSource("/api/stream");
-es.onmessage = e => { try { const d = JSON.parse(e.data); addLog(d.t || "", d.line || ""); } catch (_) {} };
+if (!window.MOCK_DATA) {  // static Pages build has no SSE endpoint — skip
+  const es = new EventSource("/api/stream");
+  es.onmessage = e => { try { const d = JSON.parse(e.data); addLog(d.t || "", d.line || ""); } catch (_) {} };
+}
+
+/* ───────────────────────────────────────── paper ledger ── */
+function renderLedger(tr) {
+  const rows = Array.isArray(tr && tr.rows) ? tr.rows : [];
+  const box = $("ledgerRows");
+  if (!rows.length) {
+    box.innerHTML = '<div class="lrow dim">ledger empty — first paper day pending</div>';
+    return;
+  }
+  box.innerHTML = rows.map(r => {
+    const net = parseFloat(String(r.net).replace("+", "")) || 0;
+    const cls = net > 0 ? "pos" : (net < 0 ? "neg" : "zero");
+    const tx = String(r.trades);
+    return `<div class="lrow"><span class="ld">${esc(r.date)}</span>` +
+           `<span class="ln2">${esc(tx)}t</span>` +
+           `<span class="lp ${cls}">${esc(r.net)} USD</span>` +
+           `<span class="ld">${esc(r.equity || "-")}</span></div>`;
+  }).join("");
+  const days = Number(tr.days) || rows.length;
+  $("ledgerMeta").textContent = `${days} day${days === 1 ? "" : "s"} · total ${tr.total_net > 0 ? "+" : ""}${tr.total_net ?? 0} USD`;
+}
+async function fetchLedger() {
+  try {
+    const r = await fetch("/api/track_record", { cache: "no-store" });
+    renderLedger(await r.json());
+  } catch (_) { /* offline LED already surfaces it */ }
+}
 
 /* ─────────────────────────────────────────────── state render ── */
 let rainResolved = false;
@@ -890,9 +947,21 @@ if (rainPref === "1") setRain(true, false);
 else if (rainPref === "0") setRain(false, false);
 window.addEventListener("resize", () => { rainSize(); if (rainOn && RM) rainStatic(); });
 
-fetchState();  fetchTrades();
-setInterval(fetchState, 5000);   // auto-refresh state every 5s
-setInterval(fetchTrades, 15000); // auto-refresh trades every 15s
+if (window.MOCK_DATA) {
+  /* static Pages build: no backend exists — replay the seeded dataset
+     through the exact same render pipeline, then idle */
+  renderState(window.MOCK_DATA.state);
+  TRADES = Array.isArray(window.MOCK_DATA.trades) ? window.MOCK_DATA.trades : [];
+  renderTrades();
+  renderLedger(window.MOCK_DATA.track_record);
+  const lines = Array.isArray(window.MOCK_LOG) ? window.MOCK_LOG : [];
+  lines.forEach((line, i) => setTimeout(() => addLog("", line), 400 + i * 550));
+} else {
+  fetchState();  fetchTrades();  fetchLedger();
+  setInterval(fetchState, 5000);     // auto-refresh state every 5s
+  setInterval(fetchTrades, 15000);   // auto-refresh trades every 15s
+  setInterval(fetchLedger, 60000);   // ledger appends once a day — 60s is plenty
+}
 
 })();
 </script>
