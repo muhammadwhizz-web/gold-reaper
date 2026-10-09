@@ -40,14 +40,15 @@ jobs:
           from features.build_features import build_features, triple_barrier
           from core.indicators import ema, rsi, atr, adx
 
-          # synthetic 1h frame
+          # synthetic 1h frame (series index MUST match frame index)
           n = 1600
+          idx = pd.date_range("2024-01-01", periods=n, freq="1h", tz="UTC")
           rng = np.random.default_rng(666)
-          close = pd.Series(np.cumsum(rng.normal(0, 3, n)) + 2000)
+          close = pd.Series(np.cumsum(rng.normal(0, 3, n)) + 2000, index=idx)
           df = pd.DataFrame({"open": close.shift(1).fillna(close.iloc[0]),
                              "high": close + 4, "low": close - 4, "close": close,
                              "volume": np.abs(rng.normal(1000, 200, n))},
-                            index=pd.date_range("2024-01-01", periods=n, freq="1h", tz="UTC"))
+                            index=idx)
 
           # indicators alive
           assert not adx(df).isna().all(), "ADX broken"
