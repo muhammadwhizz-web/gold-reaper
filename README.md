@@ -2,16 +2,31 @@
 
 <img src="docs/banner.png" width="100%" alt="GOLD REAPER banner"/>
 
-# ☠️ 𝐆𝐎𝐋𝐃 𝐑𝐄𝐀𝐏𝐄𝐑 ☠️
+# ☠️ 𝐆𝐎𝐋𝐃 𝐑𝐄𝐀𝐏𝐄𝐑 𝐀𝐏𝐄𝐗 ☠️
 
-### *the 24/7 XAU/USD autonomous hunter*
+### *the 24/7 XAU/USD autonomous hunter — now measuring 142 features across 10 dimensions*
 
-**`Exness MT5` · `Bitget Futures` · `Windows + Linux` · `Python 3.12`**
+**`APEX-X Ensemble` · `HMM Regime Router` · `News Brain` · `Exness MT5` · `Bitget` · `Win + Linux`**
 
 [![Python](https://img.shields.io/badge/python-3.12-black?style=for-the-badge&logo=python&logoColor=ff1744)](https://python.org)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20win-black?style=for-the-badge&logo=gnu-bash&logoColor=ff1744)](#-installation--autostart)
 [![License](https://img.shields.io/badge/license-MIT-black?style=for-the-badge&logo=opensourceinitiative&logoColor=ff1744)](LICENSE)
-[![Status](https://img.shields.io/badge/status-🔥_hunting-black?style=for-the-badge&logo=hackthebox&logoColor=ff1744)](https://github.com/muhammadwhizz-web/gold-reaper/actions)
+[![Status](https://img.shields.io/badge/status-🔥_APEX_hunting-black?style=for-the-badge&logo=hackthebox&logoColor=ff1744)](https://github.com/muhammadwhizz-web/gold-reaper/actions)
+
+</div>
+
+> **⚡ APEX UPGRADE — what changed:** the repo is now a full quant stack.
+> **142 engineered features** (indicators × volatility models × market structure ×
+> cross-asset cointegration × news sentiment) → **HMM regime router** → **APEX-X
+> ensemble** (trend / mean-reversion / breakout / news modules + transparent ML soft
+> vote) → **$20/4h block engine** with adaptive sizing, recovery mode and **latched
+> circuit breakers** (day −3% / week −7% / month −15%) → **audit trail** of every
+> decision → **Telegram/Discord/Email alerts** → **live dashboard** on :8050 →
+> **multi-account + broker failover**. Full architecture + honest backtest verdicts:
+> **[docs/APEX.md](docs/APEX.md)**.
+
+<div align="center">
+
 
 <img src="https://raw.githubusercontent.com/muhammadwhizz-web/gold-reaper/output/snake.svg" width="100%" alt="snake hunting the contribution grid"/>
 

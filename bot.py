@@ -6,14 +6,18 @@
 ██╔══██║██╔══██║██║     ██║
 ██║  ██║██║  ██║███████╗███████╗
 ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
-GOLD REAPER :: 24/7 XAU/USD autonomous hunter
-Targets: $20 / session · $120 / day — or die trying (with circuit breakers).
+GOLD REAPER APEX :: 24/7 XAU/USD autonomous hunter
+
+APEX-X ensemble (regime-routed trend / meanrev / breakout / news modules
++ transparent ML soft vote) · $20/4h block engine · latched circuit
+breakers · multi-broker failover · multi-account · audit trail · alerts.
 
 Run:
-  python bot.py                 # uses .env (default PAPER mode)
-  python bot.py --broker MT5    # force Exness MT5
-  python bot.py --broker BITGET
-  python bot.py --broker PAPER
+  python bot.py                          # PAPER mode (default, safe)
+  python bot.py --broker MT5             # force Exness MT5
+  python bot.py --dashboard              # + live console on :8050
+  python bot.py --reset-breakers         # clear latched circuit breakers
+  APEX_ACCOUNTS="MT5|login|pass|srv;PAPER||" python bot.py   # multi-account
 """
 from __future__ import annotations
 
@@ -21,20 +25,30 @@ import argparse
 import csv
 import signal
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from brokers.base import BrokerBase, Position  # noqa: E402
+from brokers.base import BrokerBase  # noqa: E402
 from brokers.bitget_broker import BitgetBroker  # noqa: E402
 from brokers.mt5_broker import ExnessMT5  # noqa: E402
 from brokers.paper_broker import PaperBroker  # noqa: E402
+from core import audit  # noqa: E402
 from core.config import CONFIG, Config  # noqa: E402
-from core.logger import GREEN, GRAY, RED, YELLOW, banner, cprint, setup_logger  # noqa: E402
+from core.indicators import atr as atr_fn  # noqa: E402
+from core.logger import CYAN, GREEN, GRAY, RED, YELLOW, banner, cprint, setup_logger  # noqa: E402
+from core.news_brain import NewsBrain  # noqa: E402
+from core.notify import notify  # noqa: E402
+from core.regime import RegimeDetector  # noqa: E402
 from core.risk import RiskManager  # noqa: E402
+from core.risk_apex import ApexRisk, BLOCK_TARGET, MAX_RISK_PCT, MIN_RISK_PCT  # noqa: E402
 from core.sessions import (  # noqa: E402
     friday_cutoff_reached,
     human_local,
@@ -43,20 +57,128 @@ from core.sessions import (  # noqa: E402
     now_utc,
     session_of,
 )
-from core.strategy import ReaperX, Signal  # noqa: E402
+from core.strategy import ReaperX  # noqa: E402
+from core.strategy_apex import ApexX  # noqa: E402
+from features.build_features import build_features  # noqa: E402
+from features.store import FeatureStore  # noqa: E402
 
 log = setup_logger(CONFIG.log_file)
 
 
-class GoldReaperBot:
-    def __init__(self, cfg: Config) -> None:
+# ═════════════════════════════════════════════════════════════════ live feed
+
+
+class LiveFeatureFeed:
+    """Keeps a fresh feature row for the ensemble without re-fetching
+    cross-asset data every minute. Core features recompute per closed bar;
+    cross-asset block refreshes every 4h from the store (or network)."""
+
+    def __init__(self, store: FeatureStore) -> None:
+        self.store = store
+        self._row: dict | None = None
+        self._row_ts = None
+        self._cross_row: dict = {}
+        self._cross_ts = 0.0
+        self._lock = threading.Lock()
+
+    def _refresh_cross(self) -> None:
+        try:
+            feats = self.store.read_table("features_1h")
+            if feats.empty:
+                return
+            last = feats.iloc[-1]
+            self._cross_row = {c: (None if pd.isna(v) else float(v))
+                               for c, v in last.items()
+                               if c.startswith(("f_corr_", "f_beta_", "f_resid_z_",
+                                                "f_coint_p_"))}
+            self._cross_ts = time.time()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def current(self, h1: pd.DataFrame, ts) -> dict:
+        with self._lock:
+            if time.time() - self._cross_ts > 4 * 3600:
+                self._refresh_cross()
+            if self._row is not None and self._row_ts is not None and \
+                    self._row_ts == h1.index[-1]:
+                return self._row
+            window = h1.tail(700).copy()
+            try:
+                X = build_features(window, None, with_labels=False, verbose=False)
+                last = X.iloc[-1]
+                row = {"ts": ts}
+                for c in X.columns:
+                    v = last[c]
+                    row[c] = None if pd.isna(v) else float(v)
+                # merge cached cross-asset dims (may be up to 4h stale - marked)
+                for c, v in self._cross_row.items():
+                    row.setdefault(c, v)
+                self._row, self._row_ts = row, h1.index[-1]
+            except Exception as e:  # noqa: BLE001
+                log.warning("feature feed error: %s", e)
+                if self._row is None:
+                    self._row = {"ts": ts}
+            return self._row
+
+
+class MetaModelServer:
+    """Serves the production meta-model probabilities (soft vote)."""
+
+    def __init__(self) -> None:
+        self.model = None
+        self.columns: list[str] = []
+        self.auc: float | None = None
+        meta_p = ROOT / "ml" / "models" / "meta_production.json"
+        model_p = ROOT / "ml" / "models" / "meta_production.joblib"
+        if meta_p.exists() and model_p.exists():
+            try:
+                import joblib
+                meta = json.loads(meta_p.read_text())
+                if meta.get("test_auc", 0) >= 0.56:
+                    art = joblib.load(model_p)
+                    self.model, self.columns = art["model"], art["columns"]
+                    self.auc = meta.get("test_auc")
+                    log.info("meta-model loaded (engine=%s auc=%.3f)",
+                             meta.get("engine"), self.auc)
+            except Exception as e:  # noqa: BLE001
+                log.warning("meta-model load failed: %s", e)
+
+    def prob(self, row: dict) -> float | None:
+        if self.model is None:
+            return None
+        try:
+            x = np.array([[row.get(c) if row.get(c) is not None else 0.0
+                           for c in self.columns]], dtype=np.float32)
+            p = self.model.predict_proba(x)[0]
+            return float(p[1]) if len(p) > 1 else float(p[0])
+        except Exception:  # noqa: BLE001
+            return None
+
+
+import json  # noqa: E402  (kept after imports used above)
+
+
+# ═════════════════════════════════════════════════════════════════ the bot
+
+
+class ReaperApexBot:
+    def __init__(self, cfg: Config, account_label: str = "default") -> None:
         self.cfg = cfg
+        self.label = account_label
         self.strategy = ReaperX(cfg)
-        self.risk = RiskManager(cfg)
+        self.risk = RiskManager(cfg)               # legacy state (sessions/day)
+        self.apex = ApexRisk(cfg)                  # APEX survival layer
         self.broker: BrokerBase = PaperBroker(cfg)
         self.running = True
         self._last_heartbeat = 0.0
         self._last_bar_ts = None
+        self._store: FeatureStore | None = None
+        self._feed: LiveFeatureFeed | None = None
+        self._news: NewsBrain | None = None
+        self._regime = RegimeDetector()
+        self._meta = MetaModelServer()
+        self._apexx: ApexX | None = None
+        self._last_calendar_pull = 0.0
 
     # ------------------------------------------------------------ lifecycle
     def build_broker(self, choice: str) -> BrokerBase:
@@ -66,30 +188,71 @@ class GoldReaperBot:
             return BitgetBroker(self.cfg)
         return PaperBroker(self.cfg)
 
+    def _failover_chain(self) -> list[str]:
+        primary = self.cfg.broker
+        if getattr(self.cfg, "paper", False) or primary == "PAPER":
+            return ["PAPER"]
+        chain = [primary]
+        if primary != "MT5":
+            chain.append("MT5")
+        if primary != "BITGET":
+            chain.append("BITGET")
+        chain.append("PAPER")
+        return chain
+
     def start(self) -> int:
         cprint(banner(), RED)
-        log.info("GOLD REAPER starting | broker=%s paper=%s",
-                 self.cfg.broker, self.cfg.paper)
-        cprint(f"[*] broker          : {self.cfg.broker}", YELLOW)
-        cprint(f"[*] mission         : ${self.cfg.target_per_session:.0f}/session "
-               f"· ${self.cfg.target_per_day:.0f}/day", YELLOW)
-        cprint(f"[*] risk/trade      : {self.cfg.risk_per_trade_pct}% | "
-               f"daily loss stop: {self.cfg.max_daily_loss_pct}%", YELLOW)
-        cprint(f"[*] local time      : {human_local(tz_name='Asia/Karachi')}", YELLOW)
+        log.info("APEX starting | account=%s broker=%s", self.label, self.cfg.broker)
+        cprint(f"[*] account        : {self.label}", YELLOW)
+        cprint(f"[*] mission        : ${BLOCK_TARGET:.0f}/4h block · "
+               f"targets enforced by circuit breakers", YELLOW)
+        cprint(f"[*] risk engine    : adaptive "
+               f"{MIN_RISK_PCT}-{MAX_RISK_PCT}% · "
+               f"day -3% / week -7% / month -15% latched stops", YELLOW)
+        cprint(f"[*] local time     : {human_local(tz_name='Asia/Karachi')}", YELLOW)
 
         self.risk.load()
-        self.broker = self.build_broker(self.cfg.broker)
-        if not self.broker.connect():
-            cprint("[!] primary broker unavailable -> falling back to PAPER mode", RED)
+        self.apex.load()
+        self._store = FeatureStore()
+        self._feed = LiveFeatureFeed(self._store)
+        self._news = NewsBrain(self._store, self.cfg)
+        self._apexx = ApexX(self.cfg, ml_auc=self._meta.auc)
+
+        # broker failover chain
+        for choice in self._failover_chain():
+            broker = self.build_broker(choice)
+            cprint(f"[*] trying broker : {choice}", GRAY)
+            if broker.connect():
+                self.broker = broker
+                break
+            try:
+                broker.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+        else:
             self.broker = PaperBroker(self.cfg)
             self.broker.connect()
-            if self.cfg.broker != "PAPER":
-                log.warning("fallback to paper mode")
+
+        # regime detector warmup
+        try:
+            h1 = self._store.read_bars("1h")
+            if len(h1) > 600:
+                ok = self._regime.fit(h1.tail(4000))
+                cprint(f"[*] regime engine  : "
+                       f"{'HMM fitted' if ok else 'rule-based fallback'}", YELLOW)
+        except Exception as e:  # noqa: BLE001
+            log.warning("regime warmup skipped: %s", e)
+
+        if self.apex.is_latched()[0]:
+            cprint(f"[!] CIRCUIT BREAKER LATCHED: {self.apex.is_latched()[1]} "
+                   f"— bot.py --reset-breakers to clear", RED)
 
         signal.signal(signal.SIGINT, self._stop)
         signal.signal(signal.SIGTERM, self._stop)
+        cprint("[✓] APEX ONLINE. hunting...", GREEN)
+        audit.log_event("lifecycle", {"event": "start", "account": self.label,
+                                      "broker": type(self.broker).name})
 
-        cprint("[✓] REAPER ONLINE. hunting...", GREEN)
         exit_code = 0
         try:
             while self.running:
@@ -99,6 +262,7 @@ class GoldReaperBot:
             pass
         except Exception as e:  # noqa: BLE001
             log.exception("fatal loop error: %s", e)
+            notify("CRASH", f"fatal loop error: {e}")
             exit_code = 1
         finally:
             self.shutdown()
@@ -110,103 +274,140 @@ class GoldReaperBot:
 
     def shutdown(self) -> None:
         try:
-            pos = self.broker.open_positions()
-            for p in pos:
+            for p in self.broker.open_positions():
                 log.info("open position on exit: %s %s %.2f oz @ %.2f",
                          p.ticket, p.side, p.size_oz, p.entry)
             self.risk.save()
+            self.apex.save()
             self.broker.disconnect()
-            cprint(f"[*] day pnl: {self.risk.state.day.realized_pnl:+.2f} USD | "
-                   f"balance {self.risk.state.balance:,.2f}", GREEN)
-            cprint("[✓] REAPER offline. state saved.", GRAY)
+            self._store.close()
+            cprint(f"[*] day pnl: {self.apex.state.day_pnl:+.2f} USD | "
+                   f"balance {self.apex.state.balance:,.2f}", GREEN)
+            cprint("[✓] APEX offline. state saved.", GRAY)
         except Exception:  # noqa: BLE001
             log.exception("shutdown error")
 
     # ------------------------------------------------------------ main tick
     def tick(self) -> None:
         self.risk.rollover_day()
+        self.apex.sync_period_starts()
         ts = now_utc()
+
+        # refresh the calendar every 30 min (news dimension)
+        if time.time() - self._last_calendar_pull > 1800:
+            self._last_calendar_pull = time.time()
+            try:
+                from data.news_ingest import load_calendar, normalize
+                df = normalize(load_calendar())
+                if not df.empty:
+                    self._store.write_table("calendar", df, replace=True)
+            except Exception as e:  # noqa: BLE001
+                log.warning("calendar refresh failed: %s", e)
 
         if not is_market_open(ts):
             self._heartbeat("market closed (weekend)")
             return
 
-        # 1. market data
-        data = self.broker.candles("h1", 400)
-        h1: pd = data["h1"]
-        h4: pd = data["h4"]
-        if h1 is None or len(h1) < 60 or h4 is None or len(h4) < 30:
+        data = self.broker.candles("h1", 800)
+        h1: pd.DataFrame = data["h1"]
+        h4: pd.DataFrame = data["h4"]
+        if h1 is None or len(h1) < 260 or h4 is None or len(h4) < 30:
             self._heartbeat("warming up: not enough candles")
             return
-        # drop the still-forming bar
-        h1_closed = h1.iloc[:-1] if h1.index[-1] > ts - __import__("pandas").Timedelta("1h") else h1
+        pd_td = pd.Timedelta("1h")
+        h1_closed = h1.iloc[:-1] if h1.index[-1] > ts - pd_td else h1
         last_bar = h1_closed.index[-1]
         if self._last_bar_ts == last_bar:
-            self._manage_positions(h1)          # intrabar management on same bar
+            self._manage_positions(h1)
             return
         self._last_bar_ts = last_bar
 
-        # 2. equity sync
-        eq = None
+        # equity sync
         try:
             eq = self.broker.equity()
             if eq > 0:
+                self.apex.state.equity = eq
+                self.apex.state.balance = max(self.apex.state.balance, eq) \
+                    if self.apex.state.balance <= 0 else eq
                 self.risk.update_equity(eq)
-            else:
-                eq = None
         except Exception:  # noqa: BLE001
             pass
 
-        # 3. manage exits first (BE / trail / manual SL-TP checks)
+        # manage exits first
         self._manage_positions(h1_closed)
 
-        # 4. weekend / friday guard
+        # weekend guards
         if friday_cutoff_reached(ts, self.cfg.friday_last_entry_utc):
             self._heartbeat("friday cutoff - no new entries")
             return
-        if minutes_until_market_close(ts) < self.cfg.no_entry_minutes_before_weekend_close \
-                and ts.weekday() == 4:
+        if minutes_until_market_close(ts) < \
+                self.cfg.no_entry_minutes_before_weekend_close and ts.weekday() == 4:
             self._heartbeat("pre-weekend-close blackout")
             return
 
-        # 5. risk gates
-        sess = session_of(ts)
-        allowed, why = self.risk.can_trade(sess)
+        # ── APEX dimension assembly ─────────────────────────────────
+        feat_row = self._feed.current(h1_closed, ts)
+        regime = self._regime.classify(h1_closed.tail(600))
+        news_state = self._news.state(ts)
+        ml_prob = self._meta.prob(feat_row)
+
+        # strategy-level gates first (cheap)
+        if in_blackout := getattr(__import__("core.sessions", fromlist=["in_blackout"]),
+                                  "in_blackout")(ts, self.cfg.blackout_hours_utc):
+            self._heartbeat("US-data blackout window")
+            return
+
+        # ensemble decision
+        sig = self._apexx.evaluate(h1_closed, h4, ts, feat_row, regime,
+                                   news_state, ml_prob)
+        if sig is None:
+            trace = getattr(self._apexx, "_last_trace", [])
+            votes = getattr(self._apexx, "_last_votes", {})
+            self._heartbeat(f"{sess_str(ts)}: no kill "
+                            f"(regime {regime.regime}, votes {votes or '∅'})")
+            audit.log_event("skip", {
+                "regime": regime.to_dict(), "news": news_state.to_dict(),
+                "votes": votes, "ml_prob": ml_prob,
+                "trace": trace[-4:] if trace else []})
+            return
+
+        # APEX risk gates
+        allowed, why = self.apex.can_open(sig.confidence)
         if not allowed:
+            audit.log_signal(sig, regime, news_state,
+                             sig.votes, ml_prob, "VETOED_RISK", why)
             self._heartbeat(why)
             return
 
-        # 6. strategy signal
-        sig = self.strategy.evaluate(h1_closed, h4, ts)
-        if sig is None:
-            self._heartbeat(f"{sess}: no signal (bias {self.strategy.state.bias})")
-            return
-
-        # 7. execute
-        self._execute(sig, eq if eq else self.risk.state.equity)
+        self._execute(sig, ml_prob, regime, news_state)
 
     # ------------------------------------------------------------ execution
-    def _execute(self, sig: Signal, equity: float) -> None:
+    def _execute(self, sig, ml_prob, regime, news_state) -> None:
         open_pos = self.broker.open_positions()
         if len(open_pos) >= self.cfg.max_open_trades:
             return
-        size = self.risk.position_size(sig.entry, sig.sl, equity)
-        if size <= 0:
-            log.warning("position size computed 0 - skip")
+        oz, risk_usd = self.apex.position_size_oz(sig.entry, sig.sl)
+        if oz <= 0:
+            log.warning("position size 0 - skip")
             return
-        res = self.broker.market_order(sig.side, size, sig.sl, sig.tp,
-                                       sig.session, sig.reason)
+        res = self.broker.market_order(sig.side, oz, sig.sl, sig.tp,
+                                       sig.session, sig.reasoning[-1])
         if res.ok:
-            self.risk.session_stats(sig.session)
-            self.risk.save()
-            log.info("EXECUTED %s %.3f oz @ %.2f sl %.2f tp %.2f | %s | %s",
-                     sig.side, size, res.price or sig.entry, sig.sl, sig.tp,
-                     sig.session, sig.reason)
-            self._journal(sig, size, res.price or sig.entry)
-            cprint(f"[>>>] KILL ORDER SENT {sig.side} {size:.3f} oz "
-                   f"@ {(res.price or sig.entry):.2f}", YELLOW)
+            audit.log_signal(sig, regime, news_state, sig.votes, ml_prob,
+                             "EXECUTED", f"oz={oz} risk=${risk_usd:.2f}")
+            self._journal(sig, oz, res.price or sig.entry, risk_usd)
+            cprint(f"[>>>] APEX KILL {sig.side} {oz:.3f} oz @ "
+                   f"{(res.price or sig.entry):.2f} | conf {sig.confidence:.2f} "
+                   f"| regime {sig.regime} | votes {sig.votes}", YELLOW)
+            notify("KILL ORDER",
+                   f"{sig.side} XAUUSD {oz:.3f} oz @ {res.price or sig.entry:.2f}\n"
+                   f"conf {sig.confidence:.2f} · regime {sig.regime}\n"
+                   f"votes: {sig.votes} · reasoning: {sig.reasoning[-1]}")
+        else:
+            audit.log_event("order", {"ok": False, "error": res.error})
+            log.warning("order rejected: %s", res.error)
 
-    def _journal(self, sig: Signal, size: float, price: float) -> None:
+    def _journal(self, sig, size: float, price: float, risk_usd: float) -> None:
         f = self.cfg.trades_file
         new = not f.exists()
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -214,15 +415,17 @@ class GoldReaperBot:
             w = csv.writer(fh)
             if new:
                 w.writerow(["ts_utc", "side", "size_oz", "entry", "sl", "tp",
-                            "session", "risk_oz_atr", "reason"])
+                            "session", "risk_oz_atr", "risk_usd", "regime",
+                            "confidence", "votes"])
             w.writerow([datetime.now(timezone.utc).isoformat(), sig.side, size,
-                        price, sig.sl, sig.tp, sig.session, sig.atr, sig.reason])
+                        price, sig.sl, sig.tp, sig.session, sig.atr, risk_usd,
+                        sig.regime, sig.confidence,
+                        "|".join(f"{k}:{v}" for k, v in sig.votes.items())])
 
     # ------------------------------------------------------------ positions
     def _manage_positions(self, h1) -> None:
         if h1 is None or len(h1) < 2:
             return
-        from core.indicators import atr as atr_fn
         atr_v = float(atr_fn(h1, self.cfg.atr_period).iloc[-1])
         for pos in self.broker.open_positions():
             bar_high = float(h1["high"].iloc[-1])
@@ -240,31 +443,139 @@ class GoldReaperBot:
                     if action == "BE":
                         pos.be_moved = True
                         log.info("position %s -> breakeven %.2f", pos.ticket, price)
+                        audit.log_event("lifecycle", {
+                            "event": "breakeven", "ticket": pos.ticket,
+                            "sl": price})
                     else:
                         pos.trail_active = True
                         pos.sl = price
                         log.info("position %s trailed sl -> %.2f", pos.ticket, price)
 
+        # realized fills: paper broker balance delta -> apex risk ledger
+        try:
+            bal = self.broker.balance()
+            st = self.apex.state
+            if abs(bal - st.balance) > 0.01 and st.balance > 0:
+                pnl = bal - st.balance
+                self.apex.register_fill(pnl, pnl > 0)
+                audit.log_event("fill", {"pnl": round(pnl, 2),
+                                         "block_pnl": round(
+                                             self.apex.state.current_block.pnl, 2)})
+                if self.apex.state.current_block.done:
+                    cprint(f"[💰] BLOCK TARGET BANKED: "
+                           f"{self.apex.state.current_block.pnl:+.2f} USD", GREEN)
+                    notify("TARGET HIT",
+                           f"4h block banked {self.apex.state.current_block.pnl:+.2f} USD")
+        except Exception:  # noqa: BLE001
+            pass
+
     def _heartbeat(self, msg: str) -> None:
         now = time.time()
         if now - self._last_heartbeat >= self.cfg.heartbeat_minutes * 60:
             self._last_heartbeat = now
-            d = self.risk.state.day
-            cprint(f"[♥] {human_local()} | day pnl {d.realized_pnl:+.2f} "
-                   f"({d.wins}W/{d.losses}L) | {msg}", GRAY)
-            log.info("heartbeat: %s | day pnl %.2f", msg, d.realized_pnl)
+            cprint(f"[♥] {human_local()} | block {self.apex.snapshot()['block_pnl']:+.2f}/"
+                   f"{self.apex.snapshot()['block_target']} | {msg}", GRAY)
+            log.info("heartbeat: %s", msg)
+
+
+def sess_str(ts) -> str:
+    return session_of(ts)
+
+
+# ═════════════════════════════════════════════════════════════════ multi-account
+
+
+def _parse_accounts(spec: str) -> list[dict]:
+    out = []
+    for chunk in spec.split(";"):
+        parts = chunk.strip().split("|")
+        if not parts or not parts[0]:
+            continue
+        kind = parts[0].upper()
+        acc = {"kind": kind, "label": kind.lower()}
+        if kind == "MT5" and len(parts) >= 4:
+            acc.update({"login": int(parts[1]), "password": parts[2],
+                        "server": parts[3]})
+        elif kind == "BITGET" and len(parts) >= 4:
+            acc.update({"key": parts[1], "secret": parts[2],
+                        "passphrase": parts[3]})
+        if len(parts) >= 5 and parts[4]:
+            acc["label"] = parts[4]
+        out.append(acc)
+    return out
+
+
+def _run_account(acc: dict, args) -> int:
+    import copy
+    cfg = copy.copy(CONFIG)
+    cfg.broker = acc["kind"]
+    cfg.paper = acc["kind"] == "PAPER" or args.paper
+    if acc["kind"] == "MT5":
+        cfg.mt5_login = acc.get("login", 0)
+        cfg.mt5_password = acc.get("password", "")
+        cfg.mt5_server = acc.get("server", cfg.mt5_server)
+    elif acc["kind"] == "BITGET":
+        cfg.bitget_key = acc.get("key", "")
+        cfg.bitget_secret = acc.get("secret", "")
+        cfg.bitget_passphrase = acc.get("passphrase", "")
+    bot = ReaperApexBot(cfg, account_label=acc["label"])
+    return bot.start()
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="GOLD REAPER :: XAUUSD hunter")
+    ap = argparse.ArgumentParser(description="GOLD REAPER APEX :: XAUUSD hunter")
     ap.add_argument("--broker", choices=["MT5", "BITGET", "PAPER"], default=None)
+    ap.add_argument("--paper", action="store_true", help="force paper mode")
+    ap.add_argument("--dashboard", action="store_true",
+                    help="spawn live console on :8050")
+    ap.add_argument("--reset-breakers", action="store_true",
+                    help="clear latched circuit breakers")
     args = ap.parse_args()
-    cfg = CONFIG
+
+    if args.reset_breakers:
+        ApexRisk.reset_breakers()
+        return 0
+
+    if args.dashboard:
+        t = threading.Thread(target=lambda: _spawn_dashboard(), daemon=True)
+        t.start()
+
+    accounts = _parse_accounts(__import__("os").getenv("APEX_ACCOUNTS", "")
+                               ) if __import__("os").getenv("APEX_ACCOUNTS") else []
+    if len(accounts) > 1:
+        cprint(f"[*] multi-account mode: {len(accounts)} hunters", YELLOW)
+        threads = []
+        results = {}
+        for acc in accounts:
+            th = threading.Thread(target=lambda a=acc: results.update(
+                {a["label"]: _run_account(a, args)}), daemon=False)
+            threads.append(th)
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+        return 0
+
     if args.broker:
-        cfg.broker = args.broker
-        cfg.paper = args.broker == "PAPER"
-    bot = GoldReaperBot(cfg)
+        CONFIG.broker = args.broker
+        CONFIG.paper = args.broker == "PAPER"
+    if args.paper:
+        CONFIG.paper = True
+        if not args.broker:
+            CONFIG.broker = "PAPER"
+    if accounts:
+        return _run_account(accounts[0], args)
+    bot = ReaperApexBot(CONFIG)
     return bot.start()
+
+
+def _spawn_dashboard() -> None:
+    try:
+        import uvicorn
+        from core.dashboard import app
+        uvicorn.run(app, host="0.0.0.0", port=8050, log_level="warning")
+    except Exception as e:  # noqa: BLE001
+        log.warning("dashboard failed: %s", e)
 
 
 if __name__ == "__main__":

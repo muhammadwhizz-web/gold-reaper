@@ -1,4 +1,4 @@
-name: 🔥 Reaper CI
+name: 🔥 Reaper CI (APEX)
 
 on:
   push:
@@ -23,31 +23,92 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Blood test (imports + strategy sanity)
+      - name: Blood test (imports + strategy + risk + regime + ensemble)
         run: |
           python - <<'PY'
           import sys; sys.path.insert(0, '.')
+          import numpy as np, pandas as pd
           from core.config import CONFIG
           from core.strategy import ReaperX
-          from core.risk import RiskManager
+          from core.strategy_apex import ApexX
+          from core.regime import RegimeDetector
+          from core.risk_apex import ApexRisk, BLOCK_TARGET
+          from core.news_brain import NewsBrain
+          from core.notify import notify
+          from core import audit
+          from features.store import FeatureStore
+          from features.build_features import build_features, triple_barrier
           from core.indicators import ema, rsi, atr, adx
-          import pandas as pd, numpy as np
-          # synthetic data sanity: indicators must not explode
-          n = 600
+
+          # synthetic 1h frame
+          n = 900
           rng = np.random.default_rng(666)
           close = pd.Series(np.cumsum(rng.normal(0, 3, n)) + 2000)
           df = pd.DataFrame({"open": close.shift(1).fillna(close.iloc[0]),
                              "high": close + 4, "low": close - 4, "close": close,
-                             "volume": 1000}, index=pd.date_range("2024-01-01", periods=n, freq="1h", tz="UTC"))
+                             "volume": np.abs(rng.normal(1000, 200, n))},
+                            index=pd.date_range("2024-01-01", periods=n, freq="1h", tz="UTC"))
+
+          # indicators alive
           assert not adx(df).isna().all(), "ADX broken"
-          s = ReaperX()
-          sig = s.evaluate(df, df.resample("4h").agg({"open":"first","high":"max","low":"min","close":"last"}).dropna(), df.index[-1].to_pydatetime())
-          print("strategy pipeline OK | bias:", s.state.bias, "| signal:", bool(sig))
-          rm = RiskManager()
-          assert rm.position_size(2000.0, 1990.0) > 0, "sizing broken"
-          print("risk engine OK | size example:", rm.position_size(2000.0, 1990.0), "oz")
+
+          # feature forge (no cross-asset/news in CI - offline deterministic)
+          X = build_features(df, None, with_labels=False, verbose=False)
+          fcols = [c for c in X.columns if c.startswith("f_")]
+          assert len(fcols) > 80, f"feature forge collapsed: {len(fcols)}"
+          assert X[fcols].notna().mean().mean() > 0.5, "feature coverage broken"
+
+          # triple barrier sane
+          lab = triple_barrier(df, 2.0, 1.2, 24)
+          assert lab["label_tp_before_sl"].notna().sum() > n * 0.9, "labels broken"
+
+          # regime router
+          rd = RegimeDetector()
+          rstate = rd.classify(df.tail(300))
+          assert rstate.regime in ("TREND_UP","TREND_DOWN","RANGE","VOLATILE_CHOP","CRISIS")
+
+          # ensemble abstains on noise (must not crash, must return None or Signal)
+          ax = ApexX()
+          h4 = df.resample("4h").agg({"open":"first","high":"max","low":"min","close":"last"}).dropna()
+          from core.news_brain import NewsState
+          sig = ax.evaluate(df.iloc[:-1], h4, df.index[-1].to_pydatetime(),
+                            X.iloc[-2].to_dict(), rstate, NewsState(), None)
+          print("ensemble OK | regime:", rstate.regime, "| signal:", bool(sig),
+                "| features:", len(fcols))
+
+          # apex risk engine
+          ar = ApexRisk()
+          oz, risk_usd = ar.position_size_oz(2000.0, 1990.0)
+          assert oz > 0 and risk_usd > 0, "apex sizing broken"
+          ok, why = ar.can_open(0.9)
+          print("risk engine OK | size:", oz, "oz | risk $", round(risk_usd,2),
+                "| gate:", why, "| block target:", BLOCK_TARGET)
+
+          # audit + notify pipelines
+          audit.log_event("lifecycle", {"event": "ci"})
+          rep = notify("CI", "apex blood test passed")
+          print("audit+notify OK | channels:", rep)
           PY
 
-      - name: Deploy snake on main
+      - name: Store round-trip (DuckDB)
+        run: |
+          python - <<'PY'
+          import sys; sys.path.insert(0, '.')
+          import pandas as pd, numpy as np
+          from features.store import FeatureStore
+          import tempfile, pathlib
+          p = pathlib.Path(tempfile.mkdtemp()) / "t.duckdb"
+          s = FeatureStore(p)
+          df = pd.DataFrame({"open":[1,2],"high":[2,3],"low":[0,1],"close":[1.5,2.5],
+                             "volume":[10,20]},
+                            index=pd.date_range("2024-01-01", periods=2, freq="1h", tz="UTC"))
+          s.write_bars("1h", df); s.write_bars("1h", df)   # idempotent
+          back = s.read_bars("1h")
+          assert len(back) == 2, "duckdb idempotency broken"
+          print("store round-trip OK | tables:", s.tables())
+          s.close()
+          PY
+
+      - name: Reaper is alive
         if: success()
-        run: echo "reaper is alive"
+        run: echo "APEX blood test green - the hunter lives"

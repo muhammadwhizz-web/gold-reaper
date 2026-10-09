@@ -18,3 +18,13 @@ venv/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# apex runtime artifacts
+data/store/
+data/audit.jsonl
+data/apex_risk.json
+data/breakers.json
+data/news/
+data/dashboard.log
+data/reaper.err.log
+ml/models/
