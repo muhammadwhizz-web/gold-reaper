@@ -35,10 +35,10 @@ DefaultDirName={autopf}\GoldReaper
 DefaultGroupName={#MyAppName}
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\assets\icon.ico
-LicenseFile=LICENSE
+LicenseFile=..\LICENSE
 OutputDir=output
 OutputBaseFilename=GoldReaper-Setup-{#MyAppVersion}
-SetupIconFile=assets\icon.ico
+SetupIconFile=..\assets\icon.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -56,8 +56,8 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; \
     GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; full repo payload -> Program Files\GoldReaper
-Source: "*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; \
+; full repo payload -> Program Files\GoldReaper (paths relative to THIS .iss)
+Source: "..\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; \
     Excludes: ".git,.gitignore,.gitattributes,.venv,venv,__pycache__,*.pyc,data,data\*,logs,logs\*,.env,installer\output,*.iss.bak"
 
 [Icons]

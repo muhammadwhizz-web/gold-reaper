@@ -81,7 +81,7 @@ Maintainer: gold-reaper project <muhammadwhizz-web@users.noreply.github.com>
 Homepage: https://github.com/muhammadwhizz-web/gold-reaper
 Description: Autonomous XAU/USD trading hunter (Exness MT5 / Bitget / Paper)
  Multi-broker XAU/USD bot with regime-routed ensemble strategy,
- $20/4h block risk engine, latched circuit breakers, watchdog,
+ \$20/4h block risk engine, latched circuit breakers, watchdog,
  health monitor, live dashboard. Paper mode is the default.
  No bot guarantees profit.
 EOF
