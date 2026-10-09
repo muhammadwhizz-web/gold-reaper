@@ -80,7 +80,6 @@ Filename: "powershell.exe"; \
 ; optional immediate launch (console wizard runs on first launch)
 Filename: "{app}\{#MyAppExeName}"; \
   Description: "{cm:LaunchProgram,{#MyAppName}}"; \
-  IconFilename: "{app}\assets\icon.ico"; \
   Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]
