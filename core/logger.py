@@ -79,9 +79,10 @@ def setup_logger(log_file: Path, name: str = "reaper") -> logging.Logger:
     log.addHandler(fh)
 
     if RICH:
-        ch = RichHandler(console=_console, show_time=True, show_path=False,
-                         rich_tracebacks=True, markup=False,
-                         log_time_format="%H:%M:%S")
+        ch: logging.Handler = RichHandler(console=_console, show_time=True,
+                                          show_path=False, rich_tracebacks=True,
+                                          markup=False,
+                                          log_time_format="%H:%M:%S")
         ch.setFormatter(logging.Formatter("%(message)s"))
     else:
         ch = logging.StreamHandler()

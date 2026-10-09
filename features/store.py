@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -28,7 +29,7 @@ VALID_TFS = {"1m", "2m", "5m", "15m", "30m", "1h", "4h", "1d", "1wk", "1mo", "3m
 class FeatureStore:
     def __init__(self, path: Path | None = None) -> None:
         self.path = path or (STORE_DIR / "apex.duckdb")
-        self._con = None
+        self._con: Any = None  # duckdb connection, lazily opened
 
     # ------------------------------------------------------------ connection
     @property

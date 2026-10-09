@@ -311,8 +311,8 @@ def statistical_features(df: pd.DataFrame) -> dict[str, pd.Series]:
 
     def hurst(x: np.ndarray) -> float:
         lags = range(2, 20)
-        tau = [np.std(x[lag:] - x[:-lag]) for lag in lags]
-        tau = np.array([t for t in tau if t > 0])
+        tau_raw = [np.std(x[lag:] - x[:-lag]) for lag in lags]
+        tau = np.array([t for t in tau_raw if t > 0])
         if len(tau) < 5:
             return 0.5
         return float(np.polyfit(np.log(list(lags)[:len(tau)]), np.log(tau), 1)[0])
