@@ -28,3 +28,4 @@ data/news/
 data/dashboard.log
 data/reaper.err.log
 ml/models/
+data/heartbeat.json
