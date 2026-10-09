@@ -54,6 +54,10 @@ class FeatureStore:
             d["time"] = pd.to_datetime(d["time"], utc=True, format="mixed")
         elif isinstance(d.index, pd.DatetimeIndex):
             d = d.reset_index()
+            # reset_index names the column after the index (often not "time")
+            idx_col = d.columns[0]
+            if idx_col != "time":
+                d = d.rename(columns={idx_col: "time"})
             d["time"] = pd.to_datetime(d["time"], utc=True, format="mixed")
         self.con.register("apex_tmp", d)
         try:
