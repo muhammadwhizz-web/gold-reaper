@@ -165,16 +165,32 @@ jobs:
           m = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(m)
           assert callable(m.main)
-          # dashboard app imports + mock payloads coherent
-          from dashboard.app import state_payload, trades_payload, metrics_payload
-          s = state_payload(); t = trades_payload(); m = metrics_payload()
+          # dashboard app: hermetic payload checks (earlier CI steps create
+          # data/apex_risk.json + audit.jsonl, so point DATA at a temp dir)
+          import json, tempfile, pathlib
+          import dashboard.app as da
+          tmp = pathlib.Path(tempfile.mkdtemp())
+          real_data = da.DATA
+          da.DATA = tmp
+          # mock branch: empty data dir -> seeded session, coherent analytics
+          s = da.state_payload(); t = da.trades_payload(); m = da.metrics_payload()
           assert {"equity","day_pnl","equity_history"} <= set(s)
-          assert isinstance(t, dict) and t["mode"] == "mock" and len(t["rows"]) >= 1
+          assert s["mode"] == "mock" and len(s["equity_history"]) >= 2
+          assert t["mode"] == "mock" and len(t["rows"]) >= 1
           assert m["source"] == "mock" and m["n"] >= 1 and "histogram" in m
           assert m["n"] == len(t["rows"])  # analytics agree with the table
-          print("demo layers OK | state mode:", s["mode"],
-                "| trades:", len(t["rows"]), "| metrics n:", m["n"],
+          print("demo layers mock OK | trades:", len(t["rows"]),
                 "| pf:", m["pf"], "| wr:", m["win_rate"])
+          # live branch: real state file, zero activity -> HONEST empty states
+          (tmp / "apex_risk.json").write_text(json.dumps(
+              {"equity": 1000.0, "balance": 1000.0, "wins": 0, "losses": 0}))
+          s2 = da.state_payload(); t2 = da.trades_payload(); m2 = da.metrics_payload()
+          assert s2["mode"] == "live" and s2["equity_source"] == "flat"
+          assert len(set(s2["equity_history"])) == 1  # flat at real equity
+          assert t2["mode"] == "live" and t2["rows"] == []
+          assert m2["source"] == "live" and m2["n"] == 0
+          print("demo layers live OK | honest flat equity + empty states")
+          da.DATA = real_data
           PY
 
       - name: Reaper is alive

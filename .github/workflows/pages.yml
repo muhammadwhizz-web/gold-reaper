@@ -101,7 +101,7 @@ jobs:
           counts = [0] * k
           for p in pnls:
               counts[min(k - 1, max(0, int((p - lo) / width)))] += 1
-          hist = {"labels": [f"{lo + width * i:+.0f}..{lo + width * (i + 1):+.0f}"
+          histo = {"labels": [f"{lo + width * i:+.0f}..{lo + width * (i + 1):+.0f}"
                              for i in range(k)],
                   "counts": counts,
                   "pos": [(lo + width * i + lo + width * (i + 1)) / 2 >= 0
@@ -121,7 +121,7 @@ jobs:
                      "best": round(max(pnls), 2), "worst": round(min(pnls), 2),
                      "max_drawdown": round(mdd, 2), "max_drawdown_pct": mddp,
                      "longest_win_streak": lw, "longest_loss_streak": ll,
-                     "histogram": hist, "underwater": under,
+                     "histogram": histo, "underwater": under,
                      "by_regime": by_regime, "start_balance": start,
                      "source": "mock"}
           mock = {"state": {
