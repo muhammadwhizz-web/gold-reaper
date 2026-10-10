@@ -8,16 +8,16 @@
   "open_positions": [],
   "closed_trades": [
     {
-      "ticket": "d0acbd3df6",
+      "ticket": "f89dd7b0a7",
       "side": "LONG",
       "size_oz": 0.1,
       "entry": 4220.6998,
       "exit_price": 2390.0,
       "reason": "SL",
-      "exit_ts": "2026-10-10T05:34:59.749641+00:00",
+      "exit_ts": "2026-10-10T05:36:08.834953+00:00",
       "pnl": -183.07498,
       "fee": 0.005
     }
   ],
-  "updated_at": "2026-10-10T05:35:01.921519+00:00"
+  "updated_at": "2026-10-10T05:36:10.882113+00:00"
 }

@@ -185,7 +185,8 @@ class PaperBroker(BrokerBase):
                 if pos is not None and not pos.meta.get("closed"):
                     self.positions[pos.ticket] = pos
             self.closed_trades = list(raw.get("closed_trades", []))
-            self._closed_tickets = {t.get("ticket") for t in self.closed_trades
+            self._closed_tickets = {str(t["ticket"])
+                                    for t in self.closed_trades
                                     if t.get("ticket")}
             self._mirrored = len(self.closed_trades)
         except (TypeError, ValueError, KeyError) as e:

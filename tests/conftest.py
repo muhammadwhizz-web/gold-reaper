@@ -17,8 +17,8 @@ if str(ROOT) not in sys.path:
 @pytest.fixture()
 def gr_paths(tmp_path, monkeypatch):
     """Redirect every runtime state file into tmp."""
-    import brokers.paper_broker as pb
     import bot as bot_mod
+    import brokers.paper_broker as pb
     import core.account_state as acc
     import core.audit as audit_mod
     import core.risk_apex as ra
