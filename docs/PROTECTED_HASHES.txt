@@ -1,0 +1,21 @@
+GOLD REAPER :: PROTECTED FILE HASHES (repair freeze)
+=====================================================
+Branch   : fix/reliability-v1
+Baseline : baa0cce1c3a148c311a05d3f961bfb837443489a (main @ v3.2.0)
+Recorded : 2026-10-10 (repair kickoff)
+Rule     : ZERO diffs to these files are allowed in the reliability repair.
+           tests/test_strategy_freeze.py fails if any hash changes.
+           Defects found in these files are documented in
+           docs/STRATEGY_DEFECTS.md and are NOT fixed on this branch.
+
+# sha256  <file>
+bbc644bdcdc5a0cf137ba93882c0fda04bfde1e1c3727b9678677710912e5068  core/strategy.py
+024afb10ea45b8827a87dc2ae174d306764b49c8391c54767e6b40a7e3d511f3  core/strategy_apex.py
+697d391c2ccb880be08193dc856e43e5918d18203efba63353b9876c01feaefd  core/config.py
+9a6478e6ef45d7ed1ffb894a0519b62f99269988ff3131ec9d81bbc738b4a6bf  core/risk.py
+bddb21e4ddc032709ebccfe9820039de6127082625e963b9d76df05b3ef65852  core/risk_apex.py
+401e8c2f68745584587e4cd937d9367744923a36f49f4b4a2808727209943114  core/indicators.py
+
+These modules influence signal generation, entry, exit geometry, position
+sizing and ensemble voting. Their behavior is frozen bit-for-bit for the
+duration of the P0/P1/P2 reliability repair.
