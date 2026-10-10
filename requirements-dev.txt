@@ -1,5 +1,4 @@
 # development / demo tooling (not required to run the bot)
 -r requirements.txt
+-r requirements-test.txt  # pytest/ruff/mypy/httpx (pinned gate tooling)
 asciinema>=2.4.0        # terminal session recorder (demo/record_demo.sh)
-pytest>=8.0.0           # local test runs
-ruff>=0.4.0             # lint
