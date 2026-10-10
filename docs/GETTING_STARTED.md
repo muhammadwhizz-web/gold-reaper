@@ -24,7 +24,7 @@ watchdog, dashboard and the setup wizard.
   top-level exception guard means it never exits on error
 - **Server-side SL/TP** — stops and targets live on the broker's servers;
   open trades stay protected even if your machine dies
-- **Logs + audit trail** — every decision recorded, daily log rotation
+- **Logs + audit trail** — every decision recorded, size-based log rotation (2 MB, 30 files kept)
 - **Desktop icon** — one double-click; optional tray LED (Open Dashboard /
   Stop Reaper)
 

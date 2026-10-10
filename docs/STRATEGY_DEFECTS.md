@@ -73,3 +73,73 @@ correct distance in `core/strategy_hpe.py` with a regression test
 Live impact while frozen: REAPER-X/APEX-X winners that reach +1R are
 protected at breakeven but never trail; realized R on trailed winners is
 backtest-optimistic.
+
+
+## SD-8 — NaN ATR pass-through in `ApexX.evaluate` (`core/strategy_apex.py`, discovered 2026-10-10 audit)
+`atr_v = f_atr_14_norm * close` is NaN when the feature row is NaN; both
+guards (`atr_v <= 0`, `atr_v < min_atr_price`) are False for NaN, so a
+signal can be built with `sl = entry ± 1.2×NaN`, poisoning risk sizing.
+Frozen, NOT fixed here. Mitigation upstream: feature rows are
+NaN-dropped before evaluate in the live path; the audit recommends an
+`isfinite` guard if the freeze is ever lifted.
+
+## SD-9 — `ApexRisk.__init__` save-before-load wipes persisted state (`core/risk_apex.py`, discovered 2026-10-10 audit)
+The constructor calls `sync_period_starts()` which ends in `save()` —
+BEFORE `bot.start()` calls `load()`. Every restart overwrote
+`data/apex_risk.json` with defaults: `week_pnl`, `month_pnl`, block
+state, recovery mode and `risk_multiplier` were lost (weekly/monthly
+breakers had zero memory across restarts; crash-loops voided
+cumulative-loss protection). **Mitigated 2026-10-10 WITHOUT touching the
+frozen file**: `bot.py` snapshots the file before construction and
+restores it after (`_apex_state_stash/_apex_state_restore`), so
+`load()` re-reads the real history. Regression test:
+`tests/test_reliability_v2.py::TestApexStateStash`.
+
+## SD-10 — corrupt `breakers.json` / `apex_risk.json` / `state.json` fail OPEN (`core/risk_apex.py`, `core/risk.py`, discovered 2026-10-10 audit)
+`is_latched()` and both `load()`s swallow parse errors and return
+defaults — the most safety-critical files fail open. **Mitigated at the
+bot boundary (frozen files untouched)**: `bot._guard_runtime_state()`
+parses all three files at startup and refuses to start (exit 3) on
+corruption. Regression test:
+`tests/test_reliability_v2.py::TestGuardRuntimeState`.
+
+## SD-11 — `--reset-breakers` re-latches instantly (`core/risk_apex.py`, discovered 2026-10-10 audit)
+`reset_breakers()` only unlinks the breaker file; `day_pnl` still
+breaches, so the next `can_open()` re-latches (and re-notifies). The
+escape hatch cannot work within the breaching period. NOT fixed
+(frozen): a real fix requires a policy decision about zeroing the
+breaching bucket in the money truth. Conservative direction preserved:
+the bot keeps refusing entries, never trades through a broken stop.
+
+## SD-12 — `RiskManager.load()` silently resets on corrupt file; non-atomic save (`core/risk.py`, discovered 2026-10-10 audit)
+`load()` except-pass → fresh `DayStats`; `save()` is a plain
+`write_text` (no tmpfile/replace). **Startup corruption is mitigated by
+the SD-10 bot-level guard; mid-run torn writes remain** (window is one
+small JSON write per fill/equity sync).
+
+## SD-13 — `PAPER_MODE` was a dead gate (`core/config.py` wiring, discovered 2026-10-10 audit)
+`cfg.paper` was assigned in four places and read in ZERO: `BROKER=MT5`
+with the .env-template default `PAPER_MODE=true` connected a LIVE
+account while the user believed paper mode was active (README claimed
+otherwise). **Mitigated in `core/config_validation.py`** (unfrozen):
+live BROKER now requires explicit `PAPER_MODE=false`, else exit 2.
+Regression tests: `tests/test_config_validation.py::TestPaperModeLiveGate`.
+
+## SD-14 — HMM regime engine never trained (`core/regime.py`, discovered 2026-10-10 audit; FIXED 2026-10-10)
+`Xs.values[:-0]` was an EMPTY slice (`-0 == 0`) — `GaussianHMM.fit`
+always raised, was silently swallowed, and every environment ran the
+rule fallback while docs/banners claimed the HMM was primary. The
+CRISIS coverage fallback also used `vol_rank.idxmax()` (the LEAST
+volatile state). **Both fixed (regime.py is NOT a protected file)**;
+`fit()` now trains and `classify()` may return HMM labels where it
+previously always returned rule labels. Backtests are unaffected
+(`classify_frame()` is a separate rules-only path).
+
+## SD-15 — live vs backtest regime precedence diverge (`core/regime.py`, discovered 2026-10-10 audit)
+For `vr∈(1.6,2.2]` with ADX>25 and |edist|>0.004, live `classify()`
+returns TREND_* while backtest `classify_frame()` returns
+VOLATILE_CHOP. Regime-scaled sizing/gates therefore differ between
+research and production. NOT fixed — unifying changes trading behavior
+and requires its own walk-forward comparison (Phase-10 experiment
+candidate). Documented so no one trusts cross-path regime comparisons
+blindly.

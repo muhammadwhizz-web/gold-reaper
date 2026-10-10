@@ -252,7 +252,7 @@ sudo sntp -sS time.apple.com        # macOS
 **SYMPTOM:** `WARN low disk space: 0.8 GB free`
 
 **FIX:** the bot wants at least 1GB free; old logs are the usual eater.
-Logs rotate daily — delete the old rotations only:
+Logs rotate by size (2 MB, 30 rotations kept) — delete old rotations only:
 
 ```bash
 rm ~/.local/share/gold-reaper/logs/reaper.log.*    # Linux/macOS
