@@ -33,5 +33,14 @@ data/heartbeat.json
 # console kill-switch runtime flag
 data/standby.flag
 
+# paper broker account state + analytical mirror (runtime, per machine)
+data/paper_account.json
+data/paper_account.json.bak
+data/paper.duckdb
+data/account_state.json
+data/healthcheck.duckdb
+data/bot.pid
+data/reaper.cli.log
+
 # session-boundary equity marks (runtime, append-only)
 data/equity_marks.csv

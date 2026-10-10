@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -149,3 +150,29 @@ class TestCrashSafety:
         finally:
             con.close()
         assert rows == [(res.ticket, "SL")]
+
+
+class TestPathBindingRegression:
+    def test_instance_paths_survive_module_repoint(self, mk_cfg, monkeypatch,
+                                                   tmp_path):
+        """Regression: the atexit flush used to resolve the module-global
+        ACCOUNT_FILE at interpreter exit - after pytest's monkeypatch
+        teardown had re-pointed it, leaking test state into the real
+        data/. Paths are now bound at construction."""
+        b = _mk(mk_cfg, monkeypatch)
+        real_file = pb.ACCOUNT_FILE
+        monkeypatch.setattr(pb, "ACCOUNT_FILE",
+                            tmp_path / "elsewhere.json")
+        assert b.account_path == real_file, \
+            "an existing instance must keep its construction-time path"
+
+    def test_no_repo_state_leak_after_suite(self):
+        """The repo's real data/ must stay clean of MONEY test artifacts.
+        (Import-time side effects like data/store/ and reaper.log are
+        benign and gitignored - not money state.)"""
+        repo_data = Path(__file__).resolve().parents[1] / "data"
+        leaked = [f.name for f in repo_data.glob("paper_account.json*")]
+        leaked += [f.name for f in repo_data.glob("paper.duckdb")]
+        leaked += [f.name for f in repo_data.glob("account_state.json")]
+        assert not leaked, \
+            f"test money-state leaked into the repo: {leaked}"

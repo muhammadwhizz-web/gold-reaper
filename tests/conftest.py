@@ -49,11 +49,14 @@ def mk_cfg(gr_paths):
 
 
 @pytest.fixture()
-def mk_bot(mk_cfg):
-    """A real ReaperApexBot on hermetic paths (no broker connection)."""
+def mk_bot(mk_cfg, monkeypatch):
+    """A real ReaperApexBot on hermetic paths (no broker connection,
+    deterministic paper price - tests never touch the network)."""
     from bot import ReaperApexBot
 
-    return ReaperApexBot(mk_cfg)
+    bot = ReaperApexBot(mk_cfg)
+    monkeypatch.setattr(bot.broker, "last_price", lambda: 2400.0)
+    return bot
 
 
 @pytest.fixture()

@@ -755,6 +755,14 @@ def log_lines_mock(n: int = 14) -> list[str]:
 
 # ─────────────────────────────────────────────────────────── routes
 
+@app.get("/health")
+def health() -> JSONResponse:
+    """Liveness probe for installer/health_check.py, watchdogs and docs."""
+    return JSONResponse({"status": "ok", "bot": "GOLD-REAPER",
+                         "version": CONSOLE_VERSION,
+                         "mode": "live" if _is_live() else "mock"})
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     """Console shell. P1-D: when mock mode is active the served HTML

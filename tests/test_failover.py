@@ -106,6 +106,10 @@ class TestRequestedVsActive:
         sleeps: list[float] = []
         monkeypatch.setattr(bot_mod.time, "sleep",
                             lambda s: sleeps.append(s))
+        # stub BOTH the constructor and start(): main() builds the bot with
+        # the real CONFIG, and a real constructor would touch repo data/
+        monkeypatch.setattr(bot_mod.ReaperApexBot, "__init__",
+                            lambda self, *a, **k: None)
         monkeypatch.setattr(bot_mod.ReaperApexBot, "start",
                             lambda self: 3)
         monkeypatch.setattr("sys.argv", ["bot.py", "--broker", "MT5"])

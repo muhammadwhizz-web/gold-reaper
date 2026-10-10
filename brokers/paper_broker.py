@@ -121,6 +121,12 @@ class PaperBroker(BrokerBase):
         self._cache_ts: float = 0.0
         self._last_px: float = 0.0   # last seen feed price (no re-fetch)
         self._last_stop_ts: pd.Timestamp | None = None
+        # P0-B: paths are bound AT CONSTRUCTION so late writers (the
+        # atexit flush) can never follow a module-global that someone
+        # re-pointed mid-run (this exact race once leaked test state
+        # into the real data/ directory).
+        self.account_path = Path(ACCOUNT_FILE)
+        self.duckdb_path = Path(DUCKDB_FILE)
         self._load_state()
         atexit.register(self._atexit_save)
 
@@ -147,30 +153,30 @@ class PaperBroker(BrokerBase):
 
     def _load_state(self) -> None:
         """Load persisted state. NEVER silently resets an existing account."""
-        if not ACCOUNT_FILE.exists():
-            cprint(f"[PAPER] no account state at {ACCOUNT_FILE} - "
+        if not self.account_path.exists():
+            cprint(f"[PAPER] no account state at {self.account_path} - "
                    f"initialized fresh at ${self.starting_balance:,.2f}", YELLOW)
             self._save()
             return
         try:
-            raw = json.loads(ACCOUNT_FILE.read_text(encoding="utf-8"))
+            raw = json.loads(self.account_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as e:
             # corrupt: back up, then refuse to trade until user confirms
-            bak = ACCOUNT_FILE.with_suffix(".json.bak")
+            bak = self.account_path.with_suffix(".json.bak")
             try:
                 bak.write_bytes(ACCOUNT_FILE.read_bytes())
                 cprint(f"[PAPER] corrupt account state backed up -> {bak}", RED)
             except OSError:
                 cprint("[PAPER] corrupt account state, backup FAILED", RED)
             raise PaperStateError(
-                f"paper account state is corrupt: {ACCOUNT_FILE} ({e}). "
+                f"paper account state is corrupt: {self.account_path} ({e}). "
                 f"Backup written to {bak}. Inspect/restore it, then run "
                 f"`python cli.py doctor --fix` to confirm. The bot will "
                 f"not overwrite your account silently.") from e
         version = raw.get("schema_version")
         if version != SCHEMA_VERSION:
             raise PaperStateError(
-                f"paper account state {ACCOUNT_FILE} has schema_version="
+                f"paper account state {self.account_path} has schema_version="
                 f"{version!r}, this build speaks {SCHEMA_VERSION}. "
                 f"Refusing to start (file left untouched).")
         try:
@@ -191,7 +197,7 @@ class PaperBroker(BrokerBase):
             self._mirrored = len(self.closed_trades)
         except (TypeError, ValueError, KeyError) as e:
             raise PaperStateError(
-                f"paper account state {ACCOUNT_FILE} is unreadable "
+                f"paper account state {self.account_path} is unreadable "
                 f"({e}). Refusing to trade on a half-loaded account.") from e
         if self.positions or self.closed_trades:
             cprint(f"[PAPER] restored account | cash ${self.balance_val:,.2f} | "
@@ -223,7 +229,7 @@ class PaperBroker(BrokerBase):
 
     def _save(self) -> None:
         try:
-            _atomic_write_json(ACCOUNT_FILE, self._account_dict())
+            _atomic_write_json(self.account_path, self._account_dict())
         except OSError as e:
             cprint(f"[PAPER] account state save failed: {e}", RED)
         self._mirror_duckdb()
@@ -235,7 +241,7 @@ class PaperBroker(BrokerBase):
     def _atexit_save(self) -> None:
         if self._load_error is None:
             try:
-                _atomic_write_json(ACCOUNT_FILE, self._account_dict())
+                _atomic_write_json(self.account_path, self._account_dict())
             except Exception:  # noqa: BLE001 - last-gasp flush
                 pass
 
@@ -244,7 +250,7 @@ class PaperBroker(BrokerBase):
         truth; a missing/broken duckdb only warns once."""
         try:
             import duckdb
-            con = duckdb.connect(str(DUCKDB_FILE))
+            con = duckdb.connect(str(self.duckdb_path))
             try:
                 con.execute(
                     "CREATE TABLE IF NOT EXISTS paper_trades ("
