@@ -1,4 +1,4 @@
-# ═══════════════════════════════════════════════════════════════
+﻿# ═══════════════════════════════════════════════════════════════
 #  GOLD REAPER :: Windows one-command installer (P1-E repair build)
 #═════════════════════════════════════════════════════════════════
 #  Contract: py -3.12 -> winget Python.Python.3.12 (EXPLICIT exit-code
@@ -14,7 +14,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 # Windows pipes/legacy consoles default to the ANSI codepage (cp1252) - a
-# single '✓' in bot telemetry then raises UnicodeEncodeError and kills the
+# single check-mark glyph in bot telemetry then raises UnicodeEncodeError
 # process. Force UTF-8 for this installer, the 12-step gate and every child.
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
@@ -197,7 +197,7 @@ Start-ScheduledTask -TaskName "GOLD-REAPER"           -ErrorAction SilentlyConti
 # ── 9. SUCCESS (gate passed) ───────────────────────────────────
 Write-Host ""
 Write-Host "════════════════════════════════════════════════" -ForegroundColor $Green
-Write-Host " GOLD REAPER INSTALLED — health check passed" -ForegroundColor $Green
+Write-Host " GOLD REAPER INSTALLED - health check passed" -ForegroundColor $Green
 Write-Host "════════════════════════════════════════════════" -ForegroundColor $Green
 Write-Host "  app        : $AppDir"
 Write-Host "  venv       : $Venv"
