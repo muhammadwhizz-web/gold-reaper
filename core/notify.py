@@ -11,9 +11,12 @@ Env:
 """
 from __future__ import annotations
 
+import html
 import json
 import os
 import smtplib
+import ssl
+import threading
 import urllib.request
 from email.mime.text import MIMEText
 
@@ -34,7 +37,10 @@ def telegram(title: str, text: str) -> bool:
     chat = os.getenv("TELEGRAM_CHAT_ID", "")
     if not token or not chat:
         return False
-    msg = f"☠️ {title}\n{text}"[:4000]
+    # parse_mode HTML: raw veto/reasoning text with '<', '&' or stray tags
+    # made Telegram answer 400 and the alert was silently lost - escape
+    # everything (we only ever need plain text)
+    msg = f"☠️ {html.escape(title)}\n{html.escape(text)}"[:4000]
     return _post_json(f"https://api.telegram.org/bot{token}/sendMessage",
                       {"chat_id": chat, "text": msg,
                        "parse_mode": "HTML"})
@@ -66,7 +72,10 @@ def email(title: str, text: str) -> bool:
         msg["Subject"] = f"[GOLD-REAPER] {title}"
         msg["From"], msg["To"] = frm, to
         with smtplib.SMTP(host, port, timeout=15) as s:
-            s.starttls()
+            # verified TLS: the default stdlib context does NOT validate
+            # certificates, letting an on-path attacker MITM STARTTLS and
+            # read SMTP_USER/SMTP_PASS plus every alert body
+            s.starttls(context=ssl.create_default_context())
             if user:
                 s.login(user, pwd)
             s.sendmail(frm, [to], msg.as_string())
@@ -75,15 +84,32 @@ def email(title: str, text: str) -> bool:
         return False
 
 
-def notify(title: str, text: str = "") -> dict:
-    """Fan out to every configured channel. Returns delivery report."""
+def _fan_out(title: str, text: str) -> dict:
     report = {
         "telegram": telegram(title, text),
         "discord": discord(title, text),
         "email": email(title, text),
     }
-    if not any(report.values()):
-        return report  # silent: no channels configured
-    print(f"[NOTIFY] {title} | "
-          + " ".join(f"{k}={'✓' if v else '✗'}" for k, v in report.items()))
     return report
+
+
+def notify(title: str, text: str = "") -> dict:
+    """Fan out to every configured channel WITHOUT blocking the bot loop.
+
+    The three sequential network sends (10s/10s/15s worst case) used to
+    stall the tick loop - SL enforcement and heartbeats included. The
+    fan-out now runs on a daemon thread; the returned report is a
+    best-effort snapshot (channels deliver asynchronously)."""
+    cfg_present = any([
+        os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"),
+        os.getenv("DISCORD_WEBHOOK_URL"),
+        os.getenv("SMTP_HOST"),
+    ])
+    if not cfg_present:
+        return {"telegram": False, "discord": False, "email": False}
+    t = threading.Thread(target=_fan_out, args=(title, text),
+                         daemon=True, name="reaper-notify")
+    t.start()
+    print(f"[NOTIFY] {title} | dispatched async")
+    return {"telegram": None, "discord": None, "email": None,
+            "async": True}

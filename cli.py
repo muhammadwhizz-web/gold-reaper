@@ -107,8 +107,17 @@ def doctor(fix: bool = False) -> int:
     # 5. account state
     acc_note, acc_ok, acc_fixable = _account_health()
     lines.append(_row("paper account", acc_note, acc_ok))
+    bot_pid = _bot_pid()
+    bot_running = bool(bot_pid and _is_reaper(bot_pid))
     if not acc_ok:
-        if fix and acc_fixable:
+        if fix and acc_fixable and bot_running:
+            # a live bot's 60s heartbeat_save would silently overwrite the
+            # restore (and its in-memory state diverges from disk) - refuse
+            lines.append(_row("paper account",
+                              "fix REFUSED: bot is running (stop it first)",
+                              False))
+            issues.append("paper account fix refused while the bot runs")
+        elif fix and acc_fixable:
             did = _fix_account()
             fixes.append(did)
             lines.append(_row("paper account", "restored from .bak", True))
@@ -278,13 +287,15 @@ def _service_status() -> str:
                 capture_output=True, text=True, timeout=5)
             return f"systemd user unit: {r.stdout.strip() or 'unknown'}"
         if system == "Darwin":
+            # the LaunchAgent label written by install_macos.sh (exact match)
             r = subprocess.run(
-                ["launchctl", "list", "com.gold-reaper.bot"],
+                ["launchctl", "list", "com.goldreaper.bot"],
                 capture_output=True, text=True, timeout=5)
             return f"launchagent: {'loaded' if r.returncode == 0 else 'not loaded'}"
         if system == "Windows":
+            # the scheduled-task name written by install_windows.ps1
             r = subprocess.run(
-                ["schtasks", "/query", "/tn", "GoldReaper"],
+                ["schtasks", "/query", "/tn", "GOLD-REAPER"],
                 capture_output=True, text=True, timeout=5)
             return f"scheduled task: {'present' if r.returncode == 0 else 'absent'}"
     except Exception as e:  # noqa: BLE001
@@ -325,11 +336,34 @@ def _alive(pid: int) -> bool:
         return False
 
 
+def _is_reaper(pid: int) -> bool:
+    """True when the pid actually belongs to a gold-reaper process.
+
+    os.kill(pid, 0) only proves existence: a crashed bot whose pid was
+    RECYCLED by an unrelated process would otherwise get SIGTERM from
+    stop() or block start() forever. Identity is verified via
+    /proc/<pid>/cmdline (Linux) - best-effort True elsewhere."""
+    if not _alive(pid):
+        return False
+    try:
+        if os.name == "posix" and os.path.exists(f"/proc/{pid}/cmdline"):
+            cmd = open(f"/proc/{pid}/cmdline", "rb").read().decode(
+                "utf-8", "replace")
+            return "bot.py" in cmd or "gold-reaper" in cmd
+    except Exception:  # noqa: BLE001
+        pass
+    return True
+
+
 def start() -> int:
     pid = _bot_pid()
-    if pid and _alive(pid):
+    if pid and _is_reaper(pid):
         print(f"[start] bot already running (pid {pid})")
         return 0
+    if pid and _alive(pid):
+        print(f"[start] pid {pid} is alive but is NOT gold-reaper "
+              f"(recycled pid) - clearing stale pid file")
+        PID_FILE.unlink(missing_ok=True)
     env = dict(os.environ)
     env.setdefault("BROKER", "PAPER")
     env.setdefault("PAPER_MODE", "true")
@@ -357,6 +391,12 @@ def stop() -> int:
         return 0
     if not _alive(pid):
         print(f"[stop] pid {pid} is dead - cleaning stale pid file")
+        PID_FILE.unlink(missing_ok=True)
+        return 0
+    if not _is_reaper(pid):
+        print(f"[stop] pid {pid} is alive but is NOT gold-reaper "
+              f"(recycled pid) - refusing to signal an unrelated process; "
+              f"cleaning stale pid file")
         PID_FILE.unlink(missing_ok=True)
         return 0
     try:

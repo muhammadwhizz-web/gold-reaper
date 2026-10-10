@@ -72,7 +72,11 @@ class RegimeDetector:
             self._cols_std = X.std().replace(0, 1.0).values
             model = GaussianHMM(n_components=self.n_states, covariance_type="full",
                                 n_iter=120, random_state=666)
-            model.fit(Xs.values[: -0])
+            # SD-14 fix: the historical ``Xs.values[:-0]`` was an EMPTY
+            # slice (``-0 == 0``), so fit() always raised and the HMM
+            # engine silently never trained - every environment ran the
+            # rule fallback while docs claimed the HMM was primary.
+            model.fit(Xs.values)
             self._model = model
             self._state_map = self._interpret_states(Xs, model)
             return True
@@ -102,7 +106,8 @@ class RegimeDetector:
         seen = set(mapping.values())
         for r in REGIMES:
             if r not in seen:
-                fallback_s = int(vol_rank.idxmax()) if r == "CRISIS" else int(means.index[0])
+                # vol_rank 1 = MOST volatile state (rank(ascending=False))
+                fallback_s = int(vol_rank.idxmin()) if r == "CRISIS" else int(means.index[0])
                 mapping.setdefault(fallback_s, r)
         return mapping
 

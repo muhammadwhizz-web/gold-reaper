@@ -40,6 +40,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 HEARTBEAT = ROOT / "data" / "heartbeat.json"
+PID_FILE = ROOT / "data" / "bot.pid"
 WATCHLOG = ROOT / "data" / "watchdog.log"
 
 if os.name == "nt":
@@ -72,12 +73,32 @@ def heartbeat_age() -> float | None:
 
 
 def bot_pid_alive() -> bool:
-    """If heartbeat carries a pid, verify that process still exists."""
+    """If heartbeat carries a pid, verify that process still exists.
+
+    When the heartbeat file itself is missing/unreadable (bot died before
+    its first write - import crash, broker halt), fall back to the pid
+    file: the OLD code returned True on any read failure, which made the
+    'never wrote a heartbeat' restart branch in check() unreachable and a
+    crash-at-startup bot was never revived."""
+    if HEARTBEAT.exists():
+        try:
+            hb = json.loads(HEARTBEAT.read_text(encoding="utf-8"))
+            pid = int(hb.get("pid", 0))
+            if pid > 0:
+                return _pid_alive(pid)
+        except Exception:  # noqa: BLE001 - fall through to the pid file
+            pass
     try:
-        hb = json.loads(HEARTBEAT.read_text(encoding="utf-8"))
-        pid = int(hb.get("pid", 0))
-        if pid <= 0:
-            return True  # unknown -> rely on staleness only
+        pid = int(PID_FILE.read_text(encoding="utf-8").strip())
+        if pid > 0:
+            return _pid_alive(pid)
+    except Exception:  # noqa: BLE001
+        return True  # unknown -> rely on staleness only
+    return True
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
         if os.name == "nt":
             out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"],
                                  capture_output=True, text=True, timeout=10)
@@ -123,6 +144,30 @@ def _task_exists() -> bool:
         return False
 
 
+_restart_state = {"count": 0, "window_start": 0.0, "last": 0.0,
+                  "backoff": 60.0}
+MAX_RESTARTS_PER_HOUR = 10
+
+
+def _restart_allowed() -> tuple[bool, str]:
+    """Restart throttle: max 10/hour AND exponential backoff between
+    restarts (60s doubling to 30min). The old spawn path restarted every
+    interval forever - a bot with a broken venv produced an unbounded
+    respawn loop."""
+    now = time.time()
+    if now - _restart_state["window_start"] > 3600:
+        _restart_state["window_start"] = now
+        _restart_state["count"] = 0
+    if _restart_state["count"] >= MAX_RESTARTS_PER_HOUR:
+        return False, "max restarts/hour reached - escalating silence"
+    wait = _restart_state["backoff"] * (2 ** min(_restart_state["count"], 5))
+    if now - _restart_state["last"] < wait:
+        return False, f"backoff {wait:.0f}s between restarts"
+    _restart_state["count"] += 1
+    _restart_state["last"] = now
+    return True, "allowed"
+
+
 def restart_bot(python_exe: str) -> str:
     """Restart via the platform supervisor; fallback to detached process.
 
@@ -144,18 +189,24 @@ def restart_bot(python_exe: str) -> str:
 
     # generic detached spawn — survives the watchdog, logs to data/
     bot = ROOT / "bot.py"
-    out_log = open(ROOT / "data" / "watchdog_bot.out", "ab")
+    out_path = ROOT / "data" / "watchdog_bot.out"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     if os.name == "nt":
         exe = str(Path(python_exe).with_name("pythonw.exe"))
         if not Path(exe).exists():
             exe = python_exe
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | \
             getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        subprocess.Popen([exe, str(bot)], stdout=out_log, stderr=out_log,
-                         cwd=str(ROOT), creationflags=flags, close_fds=True)
+        with open(out_path, "ab") as out_log:
+            subprocess.Popen([exe, str(bot)], stdout=out_log, stderr=out_log,
+                             cwd=str(ROOT), creationflags=flags, close_fds=True)
     else:
-        subprocess.Popen([python_exe, str(bot)], stdout=out_log, stderr=out_log,
-                         cwd=str(ROOT), start_new_session=True, close_fds=True)
+        with open(out_path, "ab") as out_log:
+            subprocess.Popen([python_exe, str(bot)], stdout=out_log,
+                             stderr=out_log, cwd=str(ROOT),
+                             start_new_session=True, close_fds=True)
+    # the child dup'd the fd; our copy is closed by the context manager -
+    # the old code leaked one handle per restart for the watchdog's life
     return "spawned detached python bot.py"
 
 
@@ -166,22 +217,34 @@ def check(stale: float) -> tuple[str, str]:
     """
     age = heartbeat_age()
     if age is None:
-        # no heartbeat file at all: if a bot pid file exists but is dead
-        # and the heartbeat never appeared, treat as stale
-        if HEARTBEAT.exists() is False and not bot_pid_alive():
-            detail = restart_bot(sys.executable)
-            return "RESTARTED", f"no heartbeat, no live pid -> {detail}"
+        # no heartbeat file at all: a bot pid that is dead (or absent from
+        # both heartbeat and pid file) with no heartbeat ever written means
+        # the bot died BEFORE its first tick - restart it
+        if not bot_pid_alive():
+            ok, why = _restart_allowed()
+            if ok:
+                detail = restart_bot(sys.executable)
+                return "RESTARTED", f"no heartbeat, no live pid -> {detail}"
+            return "STALE", f"no heartbeat, no live pid - restart withheld: {why}"
         return "OK", "no heartbeat yet (bot warming up or never ran)"
     if age <= stale:
         return "OK", f"heartbeat fresh ({age:.0f}s old)"
     if not bot_pid_alive():
-        detail = restart_bot(sys.executable)
-        return "RESTARTED", f"heartbeat stale {age:.0f}s > {stale:.0f}s + pid dead -> {detail}"
+        ok, why = _restart_allowed()
+        if ok:
+            detail = restart_bot(sys.executable)
+            return "RESTARTED", (f"heartbeat stale {age:.0f}s > {stale:.0f}s "
+                                 f"+ pid dead -> {detail}")
+        return "STALE", f"heartbeat stale {age:.0f}s + pid dead - restart withheld: {why}"
     # heartbeat stale but pid alive: bot wedged without crash — restart only
     # after 3x the stale window to avoid killing healthy slow ticks
     if age > stale * 3:
-        detail = restart_bot(sys.executable)
-        return "RESTARTED", f"heartbeat very stale {age:.0f}s (3x window), pid alive -> {detail}"
+        ok, why = _restart_allowed()
+        if ok:
+            detail = restart_bot(sys.executable)
+            return "RESTARTED", (f"heartbeat very stale {age:.0f}s "
+                                 f"(3x window), pid alive -> {detail}")
+        return "STALE", f"heartbeat very stale {age:.0f}s - restart withheld: {why}"
     return "STALE", f"heartbeat {age:.0f}s old (within grace)"
 
 
@@ -197,8 +260,8 @@ def main() -> int:
 
     log(f"watchdog online | interval={args.interval}s stale={args.stale}s "
         f"pid={os.getpid()}")
-    verdict = "OK"
     while True:
+        verdict = "OK"
         try:
             verdict, detail = check(args.stale)
             if verdict != "OK":

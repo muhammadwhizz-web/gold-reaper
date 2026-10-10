@@ -104,6 +104,26 @@ class NewsBrain:
         return self._calendar
 
     # ------------------------------------------------------------ event risk
+    @staticmethod
+    def _event_row(hi: pd.DataFrame, ts) -> pd.Series | None:
+        """Scalar row for a calendar timestamp.
+
+        Real calendars legitimately contain two high-impact events on the
+        same minute (same-slot CPI sub-events). ``.loc[ts]`` then returns
+        a DataFrame and ``float(row.get(...))`` raises TypeError - which
+        used to kill the trading loop exactly inside the news window.
+        Coerce to a single Series (highest gold relevance wins)."""
+        idx = hi.set_index("time")
+        if ts not in idx.index:
+            return None
+        row = idx.loc[ts]
+        if isinstance(row, pd.DataFrame):
+            if "gold_relevance" in row.columns:
+                row = row.sort_values("gold_relevance", ascending=False).iloc[0]
+            else:
+                row = row.iloc[0]
+        return row
+
     def event_risk(self, now: pd.Timestamp, buffer_before: int = 45,
                    buffer_after: int = 30) -> NewsState:
         st = NewsState()
@@ -119,8 +139,7 @@ class NewsBrain:
         nxt = times[times >= now - timedelta(minutes=buffer_after)]
         if not nxt.empty:
             t0 = nxt.iloc[0]
-            ev = hi.set_index("time").loc[t0] if t0 in hi.set_index("time").index \
-                else None
+            ev = self._event_row(hi, t0)
             delta_min = (t0 - now).total_seconds() / 60.0
             st.minutes_to_event = delta_min
             if ev is not None:
@@ -134,9 +153,8 @@ class NewsBrain:
         if len(past):
             t_last = past.iloc[-1]
             since = (now - t_last).total_seconds() / 60.0
-            idx = hi.set_index("time")
-            if t_last in idx.index:
-                evl = idx.loc[t_last]
+            evl = self._event_row(hi, t_last)
+            if evl is not None:
                 st.minutes_since_event = since
                 st.last_event = str(evl.get("title", ""))
                 st.last_event_relevance = float(evl.get("gold_relevance", 0))
