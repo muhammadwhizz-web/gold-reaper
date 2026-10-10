@@ -164,7 +164,9 @@ class PaperBroker(BrokerBase):
             # corrupt: back up, then refuse to trade until user confirms
             bak = self.account_path.with_suffix(".json.bak")
             try:
-                bak.write_bytes(ACCOUNT_FILE.read_bytes())
+                # read through the BOUND path (never the module global -
+                # construction-time binding is the whole point of P0-B)
+                bak.write_bytes(self.account_path.read_bytes())
                 cprint(f"[PAPER] corrupt account state backed up -> {bak}", RED)
             except OSError:
                 cprint("[PAPER] corrupt account state, backup FAILED", RED)

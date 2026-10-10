@@ -19,6 +19,7 @@ Bulletproofing (Phase 3 of the installer spec):
 from __future__ import annotations
 
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -176,15 +177,17 @@ class BitgetBroker(BrokerBase):
         self.connected = False
 
     # ------------------------------------------------------------- account
-    def balance(self) -> float:
+    def balance(self) -> float | None:
+        """None on any failure - never 0.0 (bot.py books balance deltas as
+        fills; a 0.0 sentinel would fake a total-loss fill)."""
         try:
             bal = self._call(self.x.fetch_balance,
                              {"type": self.market_type}, attempts=3)
             return float(bal.get("USDT", {}).get("total") or 0.0)
         except Exception:  # noqa: BLE001
-            return 0.0
+            return None
 
-    def equity(self) -> float:
+    def equity(self) -> float | None:
         return self.balance()
 
     # ------------------------------------------------------------- market data
@@ -199,7 +202,13 @@ class BitgetBroker(BrokerBase):
     def candles(self, timeframe: str, count: int) -> dict[str, pd.DataFrame]:
         if self.x is None:
             return {"h1": pd.DataFrame(), "h4": pd.DataFrame()}
-        return {"h1": self._ohlcv("h1", count), "h4": self._ohlcv("h4", count)}
+        try:
+            return {"h1": self._ohlcv("h1", count),
+                    "h4": self._ohlcv("h4", count)}
+        except Exception as e:  # noqa: BLE001 - outage must not crash the loop
+            cprint(f"[BITGET] candles unavailable: {_explain_ccxt_error(e)}",
+                   YELLOW)
+            return {"h1": pd.DataFrame(), "h4": pd.DataFrame()}
 
     def last_price(self) -> float:
         try:
@@ -221,6 +230,9 @@ class BitgetBroker(BrokerBase):
             params = {
                 "stopLossPrice": self.x.price_to_precision(self.symbol, sl),
                 "takeProfitPrice": self.x.price_to_precision(self.symbol, tp),
+                # idempotency key: a RequestTimeout retry must never open a
+                # SECOND position - the venue dedupes on clientOid
+                "clientOid": uuid.uuid4().hex,
             }
             o = self._call(self.x.create_order, self.symbol, "market", oside,
                            amount, None, params, attempts=2)
@@ -243,20 +255,40 @@ class BitgetBroker(BrokerBase):
 
     def close_position(self, ticket: str, reason: str = "",
                        intended_price: float | None = None) -> float | None:
+        """Reduce-only close. Returns 0.0 only when the venue CONFIRMS the
+        position is gone; None otherwise. Callers verify via
+        open_positions() and retry on the next tick - the stale
+        unrealizedPnl this method used to return was not a realized pnl."""
         try:
             self._call(self.x.cancel_order, ticket, self.symbol, attempts=2)
         except Exception:  # noqa: BLE001
             pass
         try:
             pos = self._call(self.x.fetch_positions, [self.symbol], attempts=3)
+            target = None
             for p in pos:
-                contracts = p.get("contracts") or 0
-                if contracts:
-                    side = "sell" if p["side"] == "long" else "buy"
-                    self._call(self.x.create_order, self.symbol, "market", side,
-                               contracts, None, {"reduceOnly": True}, attempts=2)
-                    pnl = p.get("unrealizedPnl")
-                    return float(pnl) if pnl is not None else None
+                if (p.get("id") and str(p["id"]) == str(ticket)) or ticket == "":
+                    target = p
+                    break
+                if contracts := (p.get("contracts") or 0):
+                    target = target or p   # fallback: first open position
+            if target is None or not (target.get("contracts") or 0):
+                return None   # nothing to close
+            contracts = target.get("contracts") or 0
+            side = "sell" if target["side"] == "long" else "buy"
+            # reduce-only close is NOT retried blind: a timeout may have
+            # filled it; the verification below decides, not optimism
+            self._call(self.x.create_order, self.symbol, "market", side,
+                       contracts, None, {"reduceOnly": True}, attempts=1)
+            # verify the position actually closed (fetch once, shortly after)
+            time.sleep(0.5)
+            after = self._call(self.x.fetch_positions, [self.symbol], attempts=3)
+            still = any((p.get("contracts") or 0) for p in after or [])
+            if still:
+                cprint("[BITGET] close sent but position still open - caller "
+                       "will retry", RED)
+                return None
+            return 0.0   # closed; realized pnl comes from the fill history
         except Exception as e:  # noqa: BLE001
             cprint(f"[BITGET] close failed: {_explain_ccxt_error(e)}", RED)
         return None

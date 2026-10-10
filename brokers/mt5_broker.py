@@ -27,7 +27,7 @@ from pathlib import Path
 import pandas as pd
 
 from brokers.base import BrokerBase, OrderResult, Position
-from core.logger import RED, YELLOW, cprint
+from core.logger import GREEN, RED, YELLOW, cprint
 
 TF_MAP = {"h1": 16385, "h4": 16388, "d1": 16408}  # MT5 constants
 
@@ -190,15 +190,17 @@ class ExnessMT5(BrokerBase):
         self.connected = False
 
     # ------------------------------------------------------------- account
-    def balance(self) -> float:
+    def balance(self) -> float | None:
+        """None when the terminal/account is unreachable - never 0.0 (a 0.0
+        sentinel would be booked by bot.py as a fake total-loss fill)."""
         if MT5_AVAILABLE and self.connected and (ai := mt5.account_info()):
             return float(ai.balance)
-        return 0.0
+        return None
 
-    def equity(self) -> float:
+    def equity(self) -> float | None:
         if MT5_AVAILABLE and self.connected and (ai := mt5.account_info()):
             return float(ai.equity)
-        return self.balance()
+        return None
 
     # ------------------------------------------------------------- market data
     def _rates(self, tf_code: int, count: int) -> pd.DataFrame:
@@ -234,6 +236,12 @@ class ExnessMT5(BrokerBase):
             return OrderResult(False, error="no symbol info")
 
         lots = self._oz_to_lots(size_oz, info)
+        if lots <= 0:
+            return OrderResult(
+                False,
+                error=f"size {size_oz:.3f} oz is below the broker minimum "
+                      f"volume - trade refused rather than silently "
+                      f"inflating risk")
         order_type = mt5.ORDER_TYPE_BUY if side == "LONG" else mt5.ORDER_TYPE_SELL
         price = tick.ask if side == "LONG" else tick.bid
         digits = info.digits
@@ -265,11 +273,18 @@ class ExnessMT5(BrokerBase):
         return OrderResult(True, ticket=str(res.order), price=float(res.price))
 
     def _oz_to_lots(self, size_oz: float, info) -> float:
+        """oz -> broker lots; 0.0 when the size is below the minimum.
+
+        The old code silently ROUNDED UP to volume_min, which multiplied
+        the configured risk on small accounts (2x, 10x...). Inflating risk
+        is a risk-policy violation - the trade is refused instead."""
         contract = info.trade_contract_size or 100.0   # XAUUSD: 100 oz / lot
         lots = size_oz / contract
         step = info.volume_step or 0.01
         minv = info.volume_min or 0.01
-        lots = max(minv, round(lots / step) * step)
+        if lots < minv:
+            return 0.0
+        lots = round(lots / step) * step
         return round(min(lots, info.volume_max or 100.0), 2)
 
     def _filling_mode(self, info) -> int:
@@ -284,12 +299,14 @@ class ExnessMT5(BrokerBase):
         if not (MT5_AVAILABLE and self.connected):
             return False
         for pos in mt5.positions_get(ticket=int(ticket)) or []:
-            digits = mt5.symbol_info(pos.symbol).digits
+            sinfo = mt5.symbol_info(pos.symbol)
+            if sinfo is None:
+                return False
             req = {
                 "action": mt5.TRADE_ACTION_SLTP,
                 "position": pos.ticket,
                 "symbol": pos.symbol,
-                "sl": round(new_sl, digits),
+                "sl": round(new_sl, sinfo.digits),
                 "tp": pos.tp,
             }
             res = mt5.order_send(req)
@@ -298,13 +315,23 @@ class ExnessMT5(BrokerBase):
 
     def close_position(self, ticket: str, reason: str = "",
                        intended_price: float | None = None) -> float | None:
+        """Returns realized pnl (best-effort from the deal history) on a
+        CONFIRMED close, None when nothing was closed. Callers verify via
+        open_positions() - never assume None means filled."""
         if not (MT5_AVAILABLE and self.connected):
             return None
         positions = mt5.positions_get(ticket=int(ticket))
         if not positions:
             return None
         pos = positions[0]
+        sinfo = mt5.symbol_info(pos.symbol)
         tick = mt5.symbol_info_tick(pos.symbol)
+        if sinfo is None or tick is None:
+            # no price/symbol snapshot -> refusing is the only safe answer
+            self._last_error = (f"close {ticket}: no symbol_info/tick for "
+                                f"{pos.symbol}")
+            cprint(f"[MT5] {self._last_error}", RED)
+            return None
         is_long = pos.type == mt5.POSITION_TYPE_BUY
         req = {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -317,12 +344,39 @@ class ExnessMT5(BrokerBase):
             "magic": 666666,
             "comment": f"REAPER close {reason[:10]}",
             "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": self._filling_mode(mt5.symbol_info(pos.symbol)),
+            "type_filling": self._filling_mode(sinfo),
         }
         res = mt5.order_send(req)
-        if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-            return None  # pnl read back via history; caller computes from prices
-        return None
+        if res is None:
+            self._last_error = f"close {ticket}: order_send None (terminal busy)"
+            cprint(f"[MT5] {self._last_error}", RED)
+            return None
+        if res.retcode != mt5.TRADE_RETCODE_DONE:
+            hint = RETCODE_HINT.get(res.retcode, "")
+            self._last_error = (f"close {ticket} rejected: retcode "
+                                f"{res.retcode}: {res.comment}"
+                                f"{(' - ' + hint) if hint else ''}")
+            cprint(f"[MT5] {self._last_error}", RED)
+            return None
+        pnl = self._realized_from_history(int(ticket))
+        cprint(f"[MT5] closed {ticket} ({reason}) realized {pnl:+.2f}",
+               GREEN if pnl >= 0 else RED)
+        return pnl
+
+    def _realized_from_history(self, ticket: int) -> float:
+        """Sum profit+commission+swap of the position's deals. History may
+        lag a moment - 0.0 means 'closed, pnl not yet readable', never a
+        fake profit."""
+        try:
+            from datetime import timedelta
+            deals = mt5.history_deals_get(
+                mt5.datetime_now() - timedelta(days=7), mt5.datetime_now(),
+                position=ticket)
+            if not deals:
+                return 0.0
+            return float(sum(d.profit + d.commission + d.swap for d in deals))
+        except Exception:  # noqa: BLE001 - reporting only, never fatal
+            return 0.0
 
     def open_positions(self) -> list[Position]:
         if not (MT5_AVAILABLE and self.connected):
@@ -331,10 +385,12 @@ class ExnessMT5(BrokerBase):
         for p in mt5.positions_get() or []:
             if p.magic != 666666:
                 continue
+            sinfo = mt5.symbol_info(p.symbol)
+            contract = (sinfo.trade_contract_size if sinfo else None) or 100
             out.append(Position(
                 ticket=str(p.ticket),
                 side="LONG" if p.type == mt5.POSITION_TYPE_BUY else "SHORT",
-                size_oz=p.volume * (mt5.symbol_info(p.symbol).trade_contract_size or 100),
+                size_oz=p.volume * contract,
                 entry=p.price_open, sl=p.sl, tp=p.tp,
                 opened_at=datetime.fromtimestamp(p.time, tz=timezone.utc),
             ))
