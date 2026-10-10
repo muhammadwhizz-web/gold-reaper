@@ -445,17 +445,25 @@ def cross_asset_features(store: FeatureStore, h1: pd.DataFrame) -> dict[str, pd.
                             pvals[combo.index[i + 119]] = coint(sub["g"], sub["x"])[1]
                         except Exception:  # noqa: BLE001
                             pass
-                pv = pd.Series(pvals).reindex(days).ffill().bfill()
+                # ffill ONLY - the old .bfill() copied the first window's
+                # p-value BACK onto the leading 120 days (leading-segment
+                # look-ahead). Warmup days honestly carry NaN.
+                pv = pd.Series(pvals).reindex(days).ffill()
                 out[f"f_coint_p_{name}"] = pv.reindex(days)
             except Exception:  # noqa: BLE001
                 pass
         except Exception as e:  # noqa: BLE001
             print(f"  [cross] {name} ({ysym}) failed: {e}")
-    # broadcast daily -> hourly by calendar day
+    # broadcast daily -> hourly by calendar day — CAUSALLY.
+    # A daily bar stamped day D closes at 23:59 of day D; broadcasting it
+    # to the h1 bars of day D handed every hourly row a feature computed
+    # with up to ~24h of future data (the day-D close). shift(1) serves
+    # day-D hourly rows the features computed through day D-1.
     day_key = h1.index.floor("1D")
     hourly = {}
     for k, v in out.items():
-        hourly[k] = pd.Series(v.reindex(day_key).values, index=h1.index)
+        hourly[k] = pd.Series(v.shift(1).reindex(day_key).values,
+                              index=h1.index)
     return hourly
 
 

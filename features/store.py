@@ -66,9 +66,14 @@ class FeatureStore:
                 self.con.execute(f"DROP TABLE IF EXISTS {name}")
                 self.con.execute(f"CREATE TABLE {name} AS SELECT * FROM apex_tmp")
             elif "time" in d.columns and self._table_exists(name):
-                tmin, tmax = d["time"].min(), d["time"].max()
+                # upsert semantics: delete ONLY the timestamps present in
+                # the incoming frame. The old min/max-range delete
+                # silently DESTROYED stored bars inside the span that the
+                # re-pull did not include (a shorter re-pull shrank the
+                # table). Anti-join delete is idempotent AND lossless.
                 self.con.execute(
-                    f"DELETE FROM {name} WHERE time BETWEEN ? AND ?", [tmin, tmax])
+                    f"DELETE FROM {name} WHERE time IN "
+                    f"(SELECT time FROM apex_tmp)")
                 self.con.execute(f"INSERT INTO {name} SELECT * FROM apex_tmp")
             else:
                 self.con.execute(f"CREATE TABLE IF NOT EXISTS {name} AS SELECT * FROM apex_tmp")

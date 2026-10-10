@@ -155,6 +155,11 @@ def metrics(y: np.ndarray, p: np.ndarray, threshold: float = 0.65) -> dict:
     }
 
 
+# label look-ahead (bars): matches the HPE triple-barrier horizon so the
+# split purge drops exactly the events whose windows cross the boundary
+HORIZON = 24
+
+
 # ------------------------------------------------------------------ main
 
 
@@ -165,8 +170,12 @@ def main(retrain: bool = True) -> int:
     Xtr_end = int(len(X) * 0.70)
     Xva_end = int(len(X) * 0.85)
     Xf, y, cols = feature_matrix(X)
-    Xtr, ytr = Xf[:Xtr_end], y[:Xtr_end]
-    Xva, yva = Xf[Xtr_end:Xva_end], y[Xtr_end:Xva_end]
+    # PURGE at split boundaries: triple-barrier labels look HORIZON bars
+    # ahead, so the last HORIZON labelled events of each split overlap the
+    # next split's feature span. train_hpe purges (embargo=24); this
+    # script did not - its 0.56 promotion gate was boundary-leaky.
+    Xtr, ytr = Xf[:Xtr_end - HORIZON], y[:Xtr_end - HORIZON]
+    Xva, yva = Xf[Xtr_end:Xva_end - HORIZON], y[Xtr_end:Xva_end - HORIZON]
     Xte, yte = Xf[Xva_end:], y[Xva_end:]
 
     print("=" * 66)

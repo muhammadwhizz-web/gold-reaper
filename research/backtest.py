@@ -2,7 +2,8 @@
 GOLD REAPER :: 20-Year Backtester
 =================================
 Replays REAPER-X over historical gold data with realistic assumptions:
-  - spread $0.35 + slippage $0.05 per side (Exness-standard-ish)
+  - spread $0.35 + slippage $0.05 charged INSIDE the entry fill, exit
+    fee $0.05/oz - identical to brokers/paper_broker.py live behavior
   - SL/TP evaluated against each bar's high/low (worst case first)
   - position sizing at 1% risk, compounding equity
   - session gating + US-data blackouts, same as live bot
@@ -50,11 +51,15 @@ def run_backtest(h1: pd.DataFrame, h4: pd.DataFrame,
     h4e50 = ema(h4["close"], cfg.htf_trend_ema_fast)
     h4e200 = ema(h4["close"], cfg.htf_trend_ema_slow)
 
-    # align h4 bias to h1 timeline
+    # align h4 bias to h1 timeline — CAUSALLY.
+    # 4h bars are OPEN-stamped: the bar stamped 12:00 covers 12:00-16:00.
+    # Without shift(1), an h1 entry at 13:00 was served the FINAL close of
+    # the very 4h block being traded - up to ~4h of future data through
+    # the primary bias gate. shift(1) serves the last COMPLETED 4h bar.
     bias_s = pd.Series("NEUTRAL", index=h1.index)
-    h4f = h4e50.reindex(h1.index, method="ffill")
-    h4s = h4e200.reindex(h1.index, method="ffill")
-    h4c = h4["close"].reindex(h1.index, method="ffill")
+    h4f = h4e50.shift(1).reindex(h1.index, method="ffill")
+    h4s = h4e200.shift(1).reindex(h1.index, method="ffill")
+    h4c = h4["close"].shift(1).reindex(h1.index, method="ffill")
     bias_s[(h4c > h4f) & (h4f > h4s)] = "LONG"
     bias_s[(h4c < h4f) & (h4f < h4s)] = "SHORT"
 
@@ -83,18 +88,21 @@ def run_backtest(h1: pd.DataFrame, h4: pd.DataFrame,
             hi, lo = high_v[i], low_v[i]
             closed = False
 
-            # conservative: SL checked before TP
+            # conservative: SL checked before TP. Exit fee = SLIPPAGE/oz,
+            # matching the live PaperBroker (entry already pays
+            # SPREAD+SLIPPAGE inside the fill; the old 2*SPREAD exit
+            # charge tripled the real round-trip cost).
             if side == "LONG" and lo <= sl:
-                pnl = (sl - entry) * open_pos["oz"] - 2 * SPREAD * open_pos["oz"]
+                pnl = (sl - entry) * open_pos["oz"] - SLIPPAGE * open_pos["oz"]
                 closed = True
             elif side == "SHORT" and hi >= sl:
-                pnl = (entry - sl) * open_pos["oz"] - 2 * SPREAD * open_pos["oz"]
+                pnl = (entry - sl) * open_pos["oz"] - SLIPPAGE * open_pos["oz"]
                 closed = True
             elif side == "LONG" and hi >= tp:
-                pnl = (tp - entry) * open_pos["oz"] - 2 * SPREAD * open_pos["oz"]
+                pnl = (tp - entry) * open_pos["oz"] - SLIPPAGE * open_pos["oz"]
                 closed = True
             elif side == "SHORT" and lo <= tp:
-                pnl = (entry - tp) * open_pos["oz"] - 2 * SPREAD * open_pos["oz"]
+                pnl = (entry - tp) * open_pos["oz"] - SLIPPAGE * open_pos["oz"]
                 closed = True
 
             if closed:
@@ -167,7 +175,7 @@ def run_backtest(h1: pd.DataFrame, h4: pd.DataFrame,
         side = open_pos["side"]
         last = close_v[-1]
         pnl = ((last - open_pos["entry"]) if side == "LONG"
-               else (open_pos["entry"] - last)) * open_pos["oz"] - 2 * SPREAD * open_pos["oz"]
+               else (open_pos["entry"] - last)) * open_pos["oz"] - SLIPPAGE * open_pos["oz"]
         equity += pnl
         trades.append({"ts": idx[-1], "side": side, "pnl": pnl,
                        "session": open_pos["session"]})

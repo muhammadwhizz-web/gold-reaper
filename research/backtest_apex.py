@@ -121,9 +121,14 @@ def simulate(h1: pd.DataFrame, h4: pd.DataFrame, feats: pd.DataFrame,
     a_s = atr(h1, 14)
     dx_s = adx(h1, 14)
     # h4 bias
-    f50 = ema(h4["close"], 50).reindex(h1.index, method="ffill")
-    f200 = ema(h4["close"], 200).reindex(h1.index, method="ffill")
-    h4c = h4["close"].reindex(h1.index, method="ffill")
+    # h4 bias — CAUSAL: 4h bars are open-stamped (a bar stamped 12:00
+    # covers 12:00-16:00). Without shift(1), an h1 entry at 13:00 was
+    # served the FINAL close of the very 4h block being traded - up to
+    # ~4h of future data through the primary bias gate. shift(1) serves
+    # the last COMPLETED 4h bar.
+    f50 = ema(h4["close"], 50).shift(1).reindex(h1.index, method="ffill")
+    f200 = ema(h4["close"], 200).shift(1).reindex(h1.index, method="ffill")
+    h4c = h4["close"].shift(1).reindex(h1.index, method="ffill")
     bias = pd.Series("NEUTRAL", index=h1.index)
     bias[(h4c > f50) & (f50 > f200)] = "LONG"
     bias[(h4c < f50) & (f50 < f200)] = "SHORT"
@@ -177,7 +182,10 @@ def simulate(h1: pd.DataFrame, h4: pd.DataFrame, feats: pd.DataFrame,
         if pos is None:
             return
         diff = (price - pos["entry"]) if pos["side"] == "LONG" else (pos["entry"] - price)
-        pnl = diff * pos["oz"] - 2 * cost * pos["oz"]
+        # exit fee = SLIPPAGE/oz, matching the live PaperBroker (entry
+        # already pays SPREAD+SLIPPAGE inside the fill; the old 2*cost
+        # exit charge tripled the real round-trip cost)
+        pnl = diff * pos["oz"] - slippage * pos["oz"]
         equity += pnl
         trades.append({"ts": idx[i], "side": pos["side"], "pnl": pnl,
                        "session": pos["session"], "regime": pos["regime"],

@@ -100,9 +100,12 @@ def simulate(h1: pd.DataFrame, h4: pd.DataFrame, feats: pd.DataFrame,
         h1["volume"].rolling(100).std().replace(0, np.nan)
 
     # h4 bias (same definition as the frozen engine)
-    f50 = ema(h4["close"], 50).reindex(h1.index, method="ffill")
-    f200 = ema(h4["close"], 200).reindex(h1.index, method="ffill")
-    h4c = h4["close"].reindex(h1.index, method="ffill")
+    # h4 bias — CAUSAL: 4h bars are open-stamped; without shift(1) an h1
+    # entry inside a 4h block was served that block's FINAL close (up to
+    # ~4h of future data). shift(1) serves the last COMPLETED 4h bar.
+    f50 = ema(h4["close"], 50).shift(1).reindex(h1.index, method="ffill")
+    f200 = ema(h4["close"], 200).shift(1).reindex(h1.index, method="ffill")
+    h4c = h4["close"].shift(1).reindex(h1.index, method="ffill")
     bias = pd.Series("NEUTRAL", index=h1.index)
     bias[(h4c > f50) & (f50 > f200)] = "LONG"
     bias[(h4c < f50) & (f50 < f200)] = "SHORT"
@@ -131,6 +134,7 @@ def simulate(h1: pd.DataFrame, h4: pd.DataFrame, feats: pd.DataFrame,
         else np.full(len(h1), np.nan)
 
     cost = SPREAD + SLIPPAGE
+    slippage = SLIPPAGE   # exit fee/oz, live PaperBroker parity
     ens = EnsembleHPE(psychology=PsychologyEngine(),
                       min_agreement=hcfg.min_agreement,
                       min_confidence=hcfg.min_confidence, ml_hard=hcfg.ml_hard)
@@ -146,7 +150,9 @@ def simulate(h1: pd.DataFrame, h4: pd.DataFrame, feats: pd.DataFrame,
             return
         diff = (price - pos["entry"]) if pos["side"] == "LONG" \
             else (pos["entry"] - price)
-        pnl = diff * pos["oz"] - 2 * cost * pos["oz"]
+        # exit fee = SLIPPAGE/oz (live PaperBroker parity; entry pays
+        # SPREAD+SLIPPAGE inside the fill)
+        pnl = diff * pos["oz"] - slippage * pos["oz"]
         equity += pnl
         risk.record_close(pnl, idx[i])
         trades.append({
@@ -295,11 +301,20 @@ def main() -> int:
     feats = assemble_dataset(store)
     store.close()
     folds_idx = purged_walkforward(feats)
-    folds_ts = [(feats.index[lo], feats.index[hi]) for lo, hi in folds_idx]
+    # purged_walkforward returns (train_idx, test_idx) POSITION ARRAYS -
+    # the old code indexed feats.index with both and produced
+    # DatetimeIndex objects, so every ``lo <= ts < hi`` comparison raised
+    # ValueError the moment the sim produced its first trade (masked
+    # while the DISARMED report contained zero trades).
+    folds_ts = []
+    for _tr, te in folds_idx:
+        lo_t = feats.index[int(te[0])]
+        hi_t = feats.index[int(te[-1])] + pd.Timedelta(hours=1)
+        folds_ts.append((lo_t, hi_t))
 
     cprint("[*] expanding-window ML probabilities (purged + embargoed)...",
            YELLOW)
-    probs, ml_reports, _eng = walkforward(feats, folds_idx)
+    probs, ml_reports, _eng, _art = walkforward(feats, folds_idx)
     cov = float(probs.notna().mean() * 100)
     cprint(f"    ML coverage {cov:.0f}% of bars (fold 0 = honest cold start)",
            YELLOW)
