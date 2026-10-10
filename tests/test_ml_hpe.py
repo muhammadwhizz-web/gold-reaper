@@ -12,6 +12,7 @@ from ml.train_hpe import (
     feature_columns,
     fold_pf,
     make_calibrator,
+    manual_auc,
     purged_walkforward,
     uniqueness_weights,
 )
@@ -116,6 +117,7 @@ def test_gate_constants_match_spec() -> None:
 # ------------------------------------------------------------ calibration
 
 def test_calibrator_bounds_and_monotonicity() -> None:
+    pytest.importorskip("sklearn")     # paper-minimal CI ships no sklearn
     rng = np.random.default_rng(9)
     p = np.clip(rng.normal(0.55, 0.15, 1200), 0, 1)
     y = (rng.random(1200) < p).astype(int)       # well-specified probs
@@ -126,6 +128,7 @@ def test_calibrator_bounds_and_monotonicity() -> None:
 
 
 def test_platt_used_for_small_calibration_sets() -> None:
+    pytest.importorskip("sklearn")     # paper-minimal CI ships no sklearn
     rng = np.random.default_rng(4)
     p = rng.random(200)
     y = (rng.random(200) < p).astype(int)
@@ -137,6 +140,16 @@ def test_platt_used_for_small_calibration_sets() -> None:
 
 
 # -------------------------------------------------------------------- pf
+
+def test_manual_auc_matches_sklearn_semantics() -> None:
+    pytest.importorskip("sklearn")
+    from sklearn.metrics import roc_auc_score
+    rng = np.random.default_rng(21)
+    y = rng.integers(0, 2, 400).astype(float)
+    p = rng.random(400)
+    assert manual_auc(y, p) == pytest.approx(roc_auc_score(y, p), abs=1e-9)
+    assert manual_auc(y, p) == manual_auc(y, p + 1e-12)   # tie-tolerant
+
 
 def test_fold_pf_math() -> None:
     assert fold_pf(np.array([2.2, -1.0, 2.2, -1.0])) == pytest.approx(2.2)

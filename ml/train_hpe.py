@@ -192,8 +192,22 @@ def make_model(seed: int = 666) -> tuple[str, Any]:
 
 
 def make_calibrator(n_rows: int):
-    from sklearn.isotonic import IsotonicRegression
-    from sklearn.linear_model import LogisticRegression
+    try:
+        from sklearn.isotonic import IsotonicRegression
+        from sklearn.linear_model import LogisticRegression
+    except ImportError:
+        # paper-minimal installs ship no sklearn: pass raw probabilities
+        # through, honestly labeled - never pretend calibration happened
+        class Passthrough:
+            kind = "passthrough (sklearn unavailable)"
+
+            def fit(self, p: np.ndarray, y: np.ndarray) -> "Passthrough":
+                return self
+
+            def predict(self, p: np.ndarray) -> np.ndarray:
+                return np.clip(p, 0.0, 1.0)
+
+        return Passthrough()
 
     class Cal:
         def __init__(self) -> None:
@@ -220,6 +234,26 @@ def make_calibrator(n_rows: int):
     return Cal()
 
 
+def manual_auc(y: np.ndarray, p: np.ndarray) -> float:
+    """Rank-based AUC without sklearn (ties get half credit)."""
+    order = np.argsort(p, kind="mergesort")
+    ranks = np.empty(len(p), dtype=float)
+    sp = p[order]
+    i = 0
+    while i < len(sp):
+        j = i
+        while j + 1 < len(sp) and sp[j + 1] == sp[i]:
+            j += 1
+        ranks[order[i:j + 1]] = (i + j) / 2.0 + 1.0
+        i = j + 1
+    n_pos = float((y == 1).sum())
+    n_neg = float((y == 0).sum())
+    if n_pos == 0 or n_neg == 0:
+        return float("nan")
+    return float((ranks[y == 1].sum() - n_pos * (n_pos + 1) / 2.0)
+                 / (n_pos * n_neg))
+
+
 def fold_pf(r_multiples: np.ndarray) -> float | None:
     pos = r_multiples[r_multiples > 0].sum()
     neg = abs(r_multiples[r_multiples <= 0].sum())
@@ -237,7 +271,10 @@ def walkforward(X: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
     probs = pd.Series(np.nan, index=X.index)
     reports: list[dict] = []
     engines: list[str] = []
-    from sklearn.metrics import roc_auc_score
+    try:
+        from sklearn.metrics import roc_auc_score
+    except ImportError:
+        roc_auc_score = None
 
     for k, (tr, te) in enumerate(folds):
         tr_lab = tr[np.isfinite(y.values[tr])]
@@ -248,7 +285,14 @@ def walkforward(X: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
         # inner calibration slice: last 20% of the training span
         cut = int(len(tr_lab) * 0.8)
         fit_idx, cal_idx = tr_lab[:cut], tr_lab[cut:]
-        engine, model = make_model()
+        try:
+            engine, model = make_model()
+        except ImportError:
+            reports.append({"fold": k, "skipped":
+                            "no ML engine available (install scikit-learn "
+                            "or xgboost) - ml abstains honestly",
+                            "train_rows": int(len(tr_lab))})
+            continue
         engines.append(engine)
         model.fit(Xf.values[fit_idx], y.values[fit_idx].astype(int),
                   sample_weight=w_all.values[fit_idx])
@@ -259,8 +303,11 @@ def walkforward(X: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
 
         te_lab_mask = np.isfinite(y.values[te])
         y_te, p_te_lab = y.values[te][te_lab_mask], p_te[te_lab_mask]
-        auc = float(roc_auc_score(y_te, p_te_lab)) if len(y_te) > 10 \
-            and len(set(y_te)) > 1 else float("nan")
+        if roc_auc_score is not None:
+            auc = float(roc_auc_score(y_te, p_te_lab)) if len(y_te) > 10 \
+                and len(set(y_te)) > 1 else float("nan")
+        else:
+            auc = manual_auc(y_te, p_te_lab) if len(y_te) > 10 else float("nan")
         taken = p_te_lab >= PROB_THRESHOLD
         pf = fold_pf(r_mult.values[te][te_lab_mask][taken]) \
             if taken.sum() >= MIN_TAKEN else None
