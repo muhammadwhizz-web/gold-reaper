@@ -83,12 +83,86 @@ def _pass(step: StepResult, detail: str = "") -> StepResult:
     return step
 
 
+_MONEY_STATE_FILES = ("paper_account.json", "paper_account.json.bak",
+                      "paper.duckdb", "account_state.json",
+                      "apex_risk.json", "breakers.json", "state.json")
+
+
+def _snapshot_money_state() -> dict[str, bytes]:
+    """Snapshot any pre-existing money-state files.
+
+    Steps 8-12 exercise the REAL data/ paths by design (they must prove
+    the actual install works). Without this snapshot the check would
+    (a) clobber a user's existing paper account and (b) leave simulated
+    state behind that the suite's repo-leak regression then flags.
+    """
+    snap: dict[str, bytes] = {}
+    for name in _MONEY_STATE_FILES:
+        f = DATA / name
+        try:
+            if f.exists():
+                snap[name] = f.read_bytes()
+        except OSError:
+            pass
+    return snap
+
+
+def _restore_money_state(snap: dict[str, bytes]) -> None:
+    for name in _MONEY_STATE_FILES:
+        f = DATA / name
+        try:
+            if name in snap:
+                f.write_bytes(snap[name])
+            elif f.exists():
+                f.unlink()
+        except OSError:
+            pass
+
+
 def run() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true",
                     help="skip the network-heavy steps (5, 7, 8, 10)")
     args = ap.parse_args()
 
+    snap = _snapshot_money_state()
+    try:
+        code = _run_gate(args)
+    finally:
+        _restore_money_state(snap)
+    return code
+
+
+def _redirect_inprocess_state() -> Path:
+    """Steps 8/9/12 construct PaperBroker/AccountState/ApexRisk IN-PROCESS.
+
+    Redirect their bound paths into a temp dir so that (a) the atexit
+    flush cannot resurrect simulated state into the repo AFTER the
+    snapshot/restore ran, (b) a user's real apex_risk.json is never
+    clobbered by the frozen constructor's save, and (c) the deliberately
+    latched step-12 breaker never silences a freshly installed bot (the
+    old check left data/breakers.json latched=true behind).  The step-10
+    bot subprocess writes the real paths; run()'s snapshot/restore
+    cleans those."""
+    import tempfile
+
+    import brokers.paper_broker as pb
+    import core.account_state as acc
+    import core.risk_apex as ra
+    from core.config import CONFIG
+
+    tmp = Path(tempfile.mkdtemp(prefix="gr_healthcheck_"))
+    pb.ACCOUNT_FILE = tmp / "paper_account.json"
+    pb.DUCKDB_FILE = tmp / "paper.duckdb"
+    acc.ACCOUNT_STATE_FILE = tmp / "account_state.json"
+    ra.RISK_FILE = tmp / "apex_risk.json"
+    ra.BREAKER_FILE = tmp / "breakers.json"
+    CONFIG.state_file = tmp / "state.json"
+    return tmp
+
+
+def _run_gate(args) -> int:
+    _redirect_inprocess_state()
     _s1_python()
     _s2_imports()
     _s3_files()

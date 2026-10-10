@@ -48,3 +48,4 @@ data/equity_marks.csv
 # hpe runtime telemetry (research reports ARE committed as evidence)
 data/hpe_state.json
 data/hpe_state.tmp
+data/health_bot.log
