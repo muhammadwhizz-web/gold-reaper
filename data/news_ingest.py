@@ -42,7 +42,7 @@ GOLD_KEYWORDS = {
 
 def fetch_calendar() -> list[dict]:
     req = urllib.request.Request(FEED, headers=UA)
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with urllib.request.urlopen(req, timeout=10) as r:
         raw = json.loads(r.read().decode("utf-8", errors="replace"))
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     CACHE.write_text(json.dumps({"fetched_at": datetime.now(timezone.utc).isoformat(),

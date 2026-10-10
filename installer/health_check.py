@@ -369,10 +369,16 @@ def _s10_bot_30s() -> None:
         env = dict(os.environ)
         env.update({"SUPERVISOR": "0", "POLL_SECONDS": "10",
                     "BROKER": "PAPER", "PAPER_MODE": "true"})
-        proc = subprocess.Popen(
-            [sys.executable, str(ROOT / "bot.py")],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            cwd=str(ROOT), env=env)
+        # capture the bot's output - DEVNULL turns any crash into an
+        # undiagnosable 'no fresh heartbeat'. the tail of this file is
+        # surfaced in the failure reason and kept for post-mortem.
+        bot_log = DATA / "health_bot.log"
+        bot_log.parent.mkdir(parents=True, exist_ok=True)
+        with open(bot_log, "w", encoding="utf-8", errors="replace") as lf:
+            proc = subprocess.Popen(
+                [sys.executable, str(ROOT / "bot.py")],
+                stdout=lf, stderr=subprocess.STDOUT,
+                cwd=str(ROOT), env=env)
         try:
             deadline = time.time() + 30
             while time.time() < deadline:
@@ -384,7 +390,15 @@ def _s10_bot_30s() -> None:
                     break
                 time.sleep(1.0)
             else:
-                _fail(r, "no fresh heartbeat within 30s",
+                tail = ""
+                try:
+                    lines = bot_log.read_text(encoding="utf-8",
+                                              errors="replace").splitlines()
+                    tail = " | bot tail: " + " >> ".join(
+                        ln for ln in lines[-4:] if ln.strip())[-320:]
+                except Exception:  # noqa: BLE001
+                    tail = " (no bot output captured)"
+                _fail(r, f"no fresh heartbeat within 30s{tail}",
                       "run 'python bot.py' and read the console/log")
                 return
         finally:

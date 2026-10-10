@@ -420,6 +420,23 @@ class ReaperApexBot:
         signal.signal(signal.SIGINT, self._stop)
         signal.signal(signal.SIGTERM, self._stop)
         cprint("[✓] APEX ONLINE. hunting...", GREEN)
+        # Liveness heartbeat BEFORE the first tick. The first tick may include
+        # a calendar network pull (up to its full timeout) and supervisors,
+        # watchdogs and the install health gate watch heartbeat.json for
+        # liveness - a slow feed must never look like a dead bot.
+        # (installer-e2e caught this: windows-2022 step 10 failed with
+        #  'no fresh heartbeat within 30s' because the first tick blocked on
+        #  the calendar pull and the gate deadline was exactly 30s.)
+        _write_heartbeat(self._mode, self._last_equity,
+                         price=self._last_price,
+                         regime=self._last_regime,
+                         session=self._last_session,
+                         position=_position_snapshot(self.broker),
+                         broker_info={
+                             "requested": self.requested_broker,
+                             "active": self.active_broker,
+                             "label": self._broker_label(),
+                         })
         audit.log_event("lifecycle", {"event": "start", "account": self.label,
                                       "broker": type(self.broker).name})
 
