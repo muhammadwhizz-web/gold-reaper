@@ -1,0 +1,28 @@
+# GOLD REAPER :: line-ending policy
+#
+# The strategy freeze guard (tests/test_strategy_freeze.py) hashes the RAW
+# BYTES of the protected files, so the working tree must be byte-identical
+# on every OS. Windows runners check out with CRLF by default
+# (core.autocrlf=true), which broke the freeze test in CI (2026-10-10):
+# every protected file hashed to its CRLF variant. eol=lf forces LF in the
+# working tree on ALL platforms, regardless of local git config, making the
+# freeze (and every raw-byte check) deterministic.
+* text=auto eol=lf
+
+# Windows-native scripts keep their native CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# explicit binaries — never normalize
+*.png binary
+*.gif binary
+*.jpg binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.db binary
+*.duckdb binary
+*.gz binary
+*.zip binary
+*.woff binary
+*.woff2 binary
