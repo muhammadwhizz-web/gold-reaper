@@ -2,6 +2,66 @@
 
 All notable changes. Format based on Keep a Changelog; versioning: semver.
 
+## [4.0] — 2026-10-10 — HPE: high-probability edge engine (ships DISARMED, honestly)
+
+### Added
+- **features/micro_features.py** — Phase 1: 48 `mf_` per-bar microstructure
+  features (anatomy, sequencing/patterns, bar-rate, movement dynamics,
+  micro-timing, path metrics incl. Kaufman ER / fractal dim / Hurst) with a
+  strict no-lookahead validator. 8 tests.
+- **core/psychology.py** — Phase 2: 27 `psy_` psychology columns; capitulation,
+  euphoria, denial, crowding detectors from price/volume natives; optional
+  VIX/DXY/US10Y/GLD/funding/COT extras degrade to neutral; 0-100 fear/greed
+  composite with coverage-honest confidence; hard vetoes (no shorting into
+  capitulation, no buying euphoria, event-window standdown). 7 tests.
+- **core/ensemble_hpe.py + core/strategy_hpe.py** — Phases 3+5: 8-module
+  ensemble (trend, meanrev, breakout, psychology, micro, cross_asset, news,
+  ml) with the >=4/8 agreement rule, two-pass voting (seven propose, the
+  micro-structure module CONFIRMS the pre-lean), zero-veto psychology gate,
+  regime/session fit; TP clamped to the 2.0-2.5R evidence band (default 2.2R,
+  SL 1.2xATR, BE +1R, trail +1.5R); same broker-agnostic interface as
+  REAPER-X. 19 tests.
+- **core/risk_hpe.py** — Phase 6: survival layer over the frozen risk stack -
+  confidence-scaled 0.3-1.5% sizing, regime scaling, equity-curve pause,
+  quarter-Kelly cap (a negative-edge ledger BLOCKS trading), loss-streak
+  brake, +$20/4h session target, daily -2% / weekly -5% / monthly -10%.
+  12 tests.
+- **ml/train_hpe.py + ml/explain_hpe.py** — Phase 4: triple-barrier labels on
+  HPE geometry (TP 2.64 ATR / SL 1.2 ATR / 24h), Lopez de Prado uniqueness
+  weights x regime/session frequencies, expanding-window PURGED+EMBARGOED
+  walk-forward (24-bar embargo), isotonic/Platt calibration, promotion gate
+  (pooled AUC >= 0.58 AND worst-fold PF >= 1.2 with >= 5 taken signals);
+  optional torch temporal-CNN+attention sequence model (soft vote only).
+  9 tests.
+- **research/backtest_hpe.py + research/regime_report.py** — Phase 8: the
+  honesty instrument. One command, zero leakage, conservative fills,
+  survival-layer gated, per-fold ledger published. Win rate by
+  regime/session/hour/fold/setup signature.
+- **Dashboard HPE telemetry** (`/api/hpe` + panel): 8-module agreement
+  matrix, confidence histogram, psychology strip, latest decision with full
+  per-module reasons, shadow stats. Mock + live + corrupt-file paths tested.
+- **bot.py `REAPER_STRATEGY=HPE`**: opt-in strategy selection; HPE runs as
+  SHADOW (full explain-mode logging + `data/hpe_state.json` telemetry, zero
+  orders) and only arms when BOTH research artifacts pass their gates.
+
+### The honest walk-forward verdict (13,733 H1 bars, 2024-05..2026-10)
+- ML (XGBoost, 216 features): OOS AUC 0.5049 / 0.4711 / 0.4726, zero signals
+  above the 0.60 threshold -> **gate REJECTED**, model stays disarmed.
+- Ensemble at the spec rule (>=4/8): **zero qualifying trades in 2.4 years**;
+  max alignment observed 3/8 (22 bars), in both the default overlap window
+  and the measured-top-8-hours variant. news + ml are honestly silent, and
+  the contrarian and momentum blocs only co-fire at capitulation/euphoria
+  reversals - rarer than the frequency target implies. HPE therefore ships
+  **DISARMED**: full telemetry, no orders, no manufactured win rate.
+- SD-7 discovered and documented (frozen, unfixed): the post-breakeven
+  `r_dist` in the frozen `ReaperX.manage_exit` uses the orig_sl PRICE as the
+  risk DISTANCE - live trailing is dead after BE (backtests masked it). HPE
+  implements the correct math with a regression test.
+
+### Fixed
+- mypy kept clean across all 8 new modules; 145 tests green; strategy freeze
+  intact (6/6 hashes untouched).
+
 ## [3.2] — 2026-10-10 — pnl heat grid · hunt attribution · toast dedup
 
 ### Added

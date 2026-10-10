@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-10-10T11:41:35.677481+00:00",
+  "by_regime": {},
+  "by_session": {},
+  "by_hour": {},
+  "by_fold": {},
+  "by_setup": {},
+  "overall": {
+    "trades": 0,
+    "net": 0.0,
+    "wr": 0.0,
+    "pf": 0.0,
+    "dd": 0.0
+  },
+  "armed": false
+}

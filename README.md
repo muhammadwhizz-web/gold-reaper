@@ -84,12 +84,27 @@ data acquisition        features + cognition          decision            execut
 yfinance 1m→1mo    ─┐   142 features · 10 dims        APEX-X ensemble     MT5 (exness)
 dukascopy ticks    ─┼─▶ HMM regime router        ──▶ consensus vote  ──▶ bitget (ccxt)
 forexfactory news  ─┘   news + sentiment               risk gates          paper sim
+                       micro + psychology (v4) ──▶ HPE shadow (disarmed)
         │                  │                              │                   │
         └──────── duckdb store ── audit.jsonl ◀──────────┴───────────────────┘
                                  (append-only black box)
 ```
 
 Full module map: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+## HPE — high-probability engine (v4.0, ships DISARMED)
+
+The 8-module ensemble (trend · meanrev · breakout · psychology · micro ·
+cross-asset · news · ml) trades only when >= 4 modules agree, psychology
+raises no veto, and regime + session fit. Walk-forward 2026-10 verdict,
+published in full: ML gate REJECTED (OOS AUC 0.50/0.47/0.47), max alignment
+3/8 across 2.4 years, zero qualifying trades — so HPE runs in **shadow
+mode** (full decision telemetry on the dashboard, zero orders) until real
+evidence passes the gate. No manufactured win rate. Losing folds published.
+
+Spec + results: [docs/HPE.md](docs/HPE.md) ·
+measurement: [docs/PSYCHOLOGY.md](docs/PSYCHOLOGY.md) ·
+the math: [docs/WIN_RATE.md](docs/WIN_RATE.md)
 
 ## Strategy — REAPER-X + APEX-X, regime-routed
 

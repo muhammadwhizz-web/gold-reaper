@@ -31,6 +31,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -38,7 +39,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-VERSION = "3.2.0"
+VERSION = "4.0.0"
 HEARTBEAT_FILE = ROOT / "data" / "heartbeat.json"
 PID_FILE = ROOT / "data" / "bot.pid"
 STANDBY_FILE = ROOT / "data" / "standby.flag"
@@ -107,6 +108,7 @@ from core.sessions import (  # noqa: E402
 )
 from core.strategy import ReaperX  # noqa: E402
 from core.strategy_apex import ApexX  # noqa: E402
+from core.strategy_hpe import StrategyHPE  # noqa: E402
 from features.build_features import build_features  # noqa: E402
 from features.store import FeatureStore  # noqa: E402
 
@@ -295,7 +297,26 @@ class ReaperApexBot:
     def __init__(self, cfg: Config, account_label: str = "default") -> None:
         self.cfg = cfg
         self.label = account_label
-        self.strategy = ReaperX(cfg)
+        self.strategy: Any = ReaperX(cfg)   # ReaperX | StrategyHPE (HPE mode)
+        # HPE mode (HPE Phases 3/5/7): opt-in via REAPER_STRATEGY=HPE. Default
+        # stays APEX. HPE starts DISARMED (shadow telemetry, no orders) and
+        # only arms when BOTH research artifacts say the gate passed.
+        self._hpe: StrategyHPE | None = None
+        self._hpe_armed = False
+        self._hpe_stats = {"decisions": 0, "would_trade": 0, "vetoed": 0,
+                           "alignment_max": 0}
+        self._hpe_hist = {k: 0 for k in ("0.0-0.2", "0.2-0.4", "0.4-0.6",
+                                         "0.6-0.8", "0.8-1.0")}
+        self._hpe_matrix: dict = {}
+        if os.environ.get("REAPER_STRATEGY", "").upper() == "HPE":
+            from core.strategy_hpe import StrategyHPE
+            self._hpe = StrategyHPE()
+            self.strategy = self._hpe        # exits use HPE geometry
+            self._hpe_armed = self._hpe_check_armed()
+            mode = "ARMED" if self._hpe_armed else \
+                "SHADOW - telemetry only, no orders"
+            cprint(f"[*] strategy: HPE ({mode})", GREEN if self._hpe_armed
+                   else YELLOW)
         self.risk = RiskManager(cfg)               # legacy state (sessions/day)
         self.apex = ApexRisk(cfg)                  # APEX survival layer
         # P0-C: ONE canonical money-truth, hydrated into both risk layers
@@ -611,9 +632,23 @@ class ReaperApexBot:
             self._heartbeat("US-data blackout window")
             return
 
-        # ensemble decision
-        sig = self._apexx.evaluate(h1_closed, h4, ts, feat_row, regime,
-                                   news_state, ml_prob)
+        # ensemble decision (HPE mode replaces the APEX evaluator; same
+        # broker-agnostic Signal interface, geometry and exit manager)
+        sig: Any = None
+        if self._hpe is not None:
+            sig = self._hpe.evaluate(h1_closed, h4, ts, ml_prob=ml_prob)
+            self._hpe_bookkeep(sig, regime)
+            if sig is not None and not self._hpe_armed:
+                audit.log_signal(sig, regime, news_state, {}, ml_prob,
+                                 "HPE_SHADOW", "disarmed - telemetry only, "
+                                 "no walk-forward evidence of edge")
+                notify("HPE SHADOW SIGNAL",
+                       f"{sig.side} conf {sig.meta.get('confidence', 0):.2f} "
+                       f"- disarmed, no order placed")
+                sig = None
+        else:
+            sig = self._apexx.evaluate(h1_closed, h4, ts, feat_row, regime,
+                                       news_state, ml_prob)
         if sig is None:
             trace = getattr(self._apexx, "_last_trace", [])
             votes = getattr(self._apexx, "_last_votes", {})
@@ -675,6 +710,68 @@ class ReaperApexBot:
                         price, sig.sl, sig.tp, sig.session, sig.atr, risk_usd,
                         sig.regime, sig.confidence,
                         "|".join(f"{k}:{v}" for k, v in sig.votes.items())])
+
+    # ------------------------------------------------------------ HPE shadow
+    def _hpe_check_armed(self) -> bool:
+        """HPE only arms when BOTH research gates passed. Neither is true
+        today (ml AUC < gate, ensemble zero qualifying trades) - so the
+        default is honest shadow telemetry."""
+        try:
+            ml_meta = json.loads((ROOT / "ml" / "models" / "hpe_production.json")
+                                 .read_text())
+            bt_meta = json.loads((ROOT / "data" / "hpe_report.json").read_text())
+            return bool(ml_meta.get("armed") and bt_meta.get("armed"))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _hpe_bookkeep(self, sig, regime) -> None:
+        """Shadow telemetry: every in-window HPE decision feeds the dashboard
+        state file (data/hpe_state.json). Explain mode logs accepted signals.
+        Never raises - telemetry must never kill the trading loop."""
+        hpe = self._hpe
+        if hpe is None:
+            return
+        d = hpe.state.last_decision
+        if d is None:
+            return
+        st = self._hpe_stats
+        st["decisions"] += 1
+        st["alignment_max"] = max(st["alignment_max"], d.aligned)
+        if d.accepted:
+            st["would_trade"] += 1
+            from ml.explain_hpe import format_decision
+            cprint("[HPE] signal explanation:", YELLOW)
+            for line in format_decision(d.to_dict()):
+                cprint(f"  {line}", YELLOW)
+        elif d.vetoes:
+            st["vetoed"] += 1
+        self._hpe_hist[list(self._hpe_hist)[min(int(d.confidence * 5), 4)]] += 1
+        for m, v in d.votes.items():
+            slot = self._hpe_matrix.setdefault(
+                m, {"LONG": 0, "SHORT": 0, "abstain": 0})
+            slot["LONG" if v["dir"] > 0 else
+                 "SHORT" if v["dir"] < 0 else "abstain"] += 1
+        payload = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "mode": "ARMED" if self._hpe_armed else "SHADOW",
+            "strategy": "HPE",
+            "last_decision": d.to_dict(),
+            "last_signal": ({"ts": sig.ts.isoformat(), "side": sig.side,
+                             "entry": sig.entry, "sl": sig.sl, "tp": sig.tp}
+                            if sig is not None else None),
+            "psychology": d.psychology or {},
+            "confidence_histogram": self._hpe_hist,
+            "agreement_matrix": self._hpe_matrix,
+            "shadow_stats": st,
+            "regime": regime.to_dict() if regime is not None else {},
+        }
+        try:
+            path = ROOT / "data" / "hpe_state.json"
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(payload, default=str), encoding="utf-8")
+            tmp.replace(path)
+        except Exception as e:  # noqa: BLE001
+            log.warning("hpe_state write failed: %s", e)
 
     # ------------------------------------------------------------ positions
     def _manage_positions(self, h1) -> None:

@@ -15,7 +15,8 @@ In live mode an empty journal renders an honest empty state, never mock
 rows (the brand contract: losses published, fabrications never).
 
 Endpoints: /api/state · /api/trades · /api/metrics · /api/track_record
-           /api/news · GET+POST /api/standby (kill-switch) · /api/stream (SSE)
+           /api/news · /api/hpe (HPE shadow telemetry)
+           GET+POST /api/standby (kill-switch) · /api/stream (SSE)
 
 Run:   python dashboard/app.py          ->  http://localhost:8080
 """
@@ -47,6 +48,7 @@ DATA = ROOT / "data"
 HEARTBEAT_FILE = DATA / "heartbeat.json"
 STANDBY_FILE = DATA / "standby.flag"
 NEWS_FILE = DATA / "news" / "calendar_latest.json"
+HPE_FILE = DATA / "hpe_state.json"  # HPE shadow-mode telemetry (bot-written)
 HEARTBEAT_FRESH_S = 180  # mirrors watchdog staleness threshold
 
 
@@ -254,6 +256,114 @@ def news_payload(limit: int = 8) -> dict:
     except Exception:  # noqa: BLE001
         return {"events": [], "fetched_at": None,
                 "source": "calendar cache unreadable"}
+
+
+def _hpe_mock() -> dict:
+    """Seeded HPE shadow demo - deterministic, no randomness at request time.
+    Honest-looking disarmed session: 4 of 8 modules lean LONG (ml's vote is
+    discounted below the 0.35 strength floor), cross_asset leans SHORT, the
+    rest abstain - so alignment lands 3/4 and the decision is rejected.
+    Histogram skews to the 0.4-0.6 band; zero orders ever placed."""
+    return {
+        "updated_at": "2026-10-09T12:04:33+00:00",
+        "mode": "SHADOW",
+        "strategy": "HPE",
+        "last_decision": {
+            "side": "LONG",
+            "confidence": 0.58,
+            "aligned": 3,
+            "required": 4,
+            "votes": {
+                "trend": {"dir": 1, "strength": 0.72,
+                          "reason": "ema20>ema50 · pullback rsi 44.8"},
+                "meanrev": {"dir": 1, "strength": 0.55,
+                            "reason": "stretch +1.8z fading into ema20"},
+                "breakout": {"dir": 1, "strength": 0.48,
+                             "reason": "2412 base retest · adx 27"},
+                "psychology": {"dir": 0, "strength": 0.0,
+                               "reason": "fg 62 GREED · no veto, no edge"},
+                "micro": {"dir": 0, "strength": 0.0,
+                          "reason": "doji close · flat anatomy"},
+                "cross_asset": {"dir": -1, "strength": 0.30,
+                                "reason": "dxy +0.4% · vix 14.1 soft"},
+                "news": {"dir": 0, "strength": 0.0,
+                         "reason": "nfp in 126m · outside blackout"},
+                "ml": {"dir": 1, "strength": 0.33,
+                       "reason": "lgbm p_win 0.51 · below 0.35 floor"},
+            },
+            "vetoes": ["agreement:3/4 — below required 4"],
+            "regime": "TREND_UP",
+            "session": "LONDON_NY_OVERLAP",
+            "explain": [
+                "trend: LONG (0.72) · ema20>ema50, pullback rsi 44.8",
+                "meanrev: LONG (0.55) · stretch +1.8z fading",
+                "breakout: LONG (0.48) · 2412 base retest",
+                "psychology: abstain · fg 62 GREED, no veto",
+                "micro: abstain · doji close, flat anatomy",
+                "cross_asset: SHORT (0.30) · dxy +0.4%, vix soft",
+                "news: abstain · nfp in 126m, outside blackout",
+                "ml: LONG (0.33) discounted · below 0.35 strength floor",
+                "verdict: REJECTED · agreement 3/4 · no order (shadow)",
+            ],
+            "accepted": False,
+        },
+        "last_signal": None,
+        "psychology": {"fear_greed": 62.0, "regime_tag": "GREED",
+                       "capitulation": 0, "euphoria": 0},
+        "confidence_histogram": {"0.0-0.2": 6, "0.2-0.4": 21, "0.4-0.6": 49,
+                                 "0.6-0.8": 8, "0.8-1.0": 0},
+        "agreement_matrix": {
+            "trend": {"LONG": 9, "SHORT": 4, "abstain": 71},
+            "meanrev": {"LONG": 6, "SHORT": 5, "abstain": 73},
+            "breakout": {"LONG": 3, "SHORT": 2, "abstain": 79},
+            "psychology": {"LONG": 2, "SHORT": 1, "abstain": 81},
+            "micro": {"LONG": 5, "SHORT": 3, "abstain": 76},
+            "cross_asset": {"LONG": 1, "SHORT": 6, "abstain": 77},
+            "news": {"LONG": 0, "SHORT": 1, "abstain": 83},
+            "ml": {"LONG": 1, "SHORT": 0, "abstain": 83},
+        },
+        "shadow_stats": {"decisions": 84, "would_trade": 0, "vetoed": 5,
+                         "alignment_max": 3},
+        "source": "mock",
+    }
+
+
+def hpe_payload() -> dict:
+    """HPE (high-probability engine) shadow-mode telemetry.
+
+    The strategy is DISARMED: it logs votes, vetoes and confidence but
+    places no orders. Live reads data/hpe_state.json (bot-written); a
+    missing or corrupt file renders an honest idle state - live never
+    falls back to the seeded mock (same brand contract as the journal)."""
+    if not _is_live():
+        return _hpe_mock()
+
+    def _empty(note: str) -> dict:
+        return {"updated_at": None, "mode": "SHADOW", "strategy": "HPE",
+                "last_decision": None, "last_signal": None,
+                "psychology": None, "confidence_histogram": {},
+                "agreement_matrix": {}, "shadow_stats": None,
+                "source": note}
+
+    if not HPE_FILE.exists():
+        return _empty("data/hpe_state.json — not written yet")
+    try:
+        raw = json.loads(HPE_FILE.read_text())
+        if not isinstance(raw, dict):
+            raise ValueError("hpe state must be a json object")
+        raw.setdefault("strategy", "HPE")
+        raw.setdefault("mode", "SHADOW")
+        raw.setdefault("updated_at", None)
+        raw.setdefault("last_decision", None)
+        raw.setdefault("last_signal", None)
+        raw.setdefault("psychology", None)
+        raw.setdefault("confidence_histogram", {})
+        raw.setdefault("agreement_matrix", {})
+        raw.setdefault("shadow_stats", None)
+        raw["source"] = "data/hpe_state.json"
+        return raw
+    except Exception:  # noqa: BLE001 - corrupt state renders idle, never mock
+        return _empty("data/hpe_state.json — unreadable")
 
 
 # ─────────────────────────────────────────────────────────── data providers
@@ -804,6 +914,12 @@ def api_track_record() -> JSONResponse:
 @app.get("/api/news")
 def api_news() -> JSONResponse:
     return JSONResponse(news_payload())
+
+
+@app.get("/api/hpe")
+def api_hpe() -> JSONResponse:
+    """HPE shadow telemetry: votes, vetoes, psychology, decision stats."""
+    return JSONResponse(hpe_payload())
 
 
 @app.get("/api/standby")

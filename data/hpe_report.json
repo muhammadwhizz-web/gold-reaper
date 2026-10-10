@@ -1,0 +1,80 @@
+{
+  "generated_at": "2026-10-10T11:38:49.057217+00:00",
+  "bars": 13733,
+  "span": [
+    "2024-05-17 04:00:00+00:00",
+    "2026-10-09 20:00:00+00:00"
+  ],
+  "ml_coverage_pct": 75.00182043253477,
+  "ml_folds": [
+    {
+      "fold": 0,
+      "engine": "xgboost",
+      "train_rows": 2708,
+      "cal_rows": 677,
+      "test_rows": 3433,
+      "labelled_test": 3433,
+      "base_rate": 0.351,
+      "auc": 0.5049,
+      "taken": 0,
+      "pf_taken": null
+    },
+    {
+      "fold": 1,
+      "engine": "xgboost",
+      "train_rows": 5454,
+      "cal_rows": 1364,
+      "test_rows": 3433,
+      "labelled_test": 3433,
+      "base_rate": 0.3994,
+      "auc": 0.4711,
+      "taken": 0,
+      "pf_taken": null
+    },
+    {
+      "fold": 2,
+      "engine": "xgboost",
+      "train_rows": 8200,
+      "cal_rows": 2051,
+      "test_rows": 3434,
+      "labelled_test": 3410,
+      "base_rate": 0.3088,
+      "auc": 0.4726,
+      "taken": 0,
+      "pf_taken": null
+    }
+  ],
+  "config": {
+    "tp_r": 2.2,
+    "sl_atr": 1.2,
+    "hours": [
+      12,
+      13,
+      14,
+      15
+    ],
+    "min_agreement": 4,
+    "min_confidence": 0.4
+  },
+  "stats": {
+    "trades": 0,
+    "net": 0.0,
+    "wr": 0.0,
+    "pf": 0.0,
+    "dd": 0.0
+  },
+  "fold_nets": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "fold_wr": [
+    null,
+    null,
+    null
+  ],
+  "worst_fold_net": 0.0,
+  "worst_fold_pf": 0.0,
+  "armed": false,
+  "trades": []
+}

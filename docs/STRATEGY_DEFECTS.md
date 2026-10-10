@@ -56,3 +56,20 @@ scope. The repair-branch test pins the gate-path once-only contract.
 Any change to the protected files must: (1) update
 docs/PROTECTED_HASHES.txt deliberately, (2) justify the change here,
 (3) rerun the full walk-forward before merge to main.
+
+## SD-7 — Post-breakeven `r_dist` uses the orig_sl PRICE, not the DISTANCE (`core/strategy.py`, discovered during the HPE build 2026-10-10)
+`ReaperX.manage_exit()` computes
+`r_dist = abs(entry - sl if not be_moved else pos["orig_sl"])`. Once the
+stop is at breakeven, `pos["orig_sl"]` is the ORIGINAL SL *price*
+(bot.py passes `pos.orig_sl or pos.sl`, e.g. 3348.8) — so `r_dist`
+becomes ~3348 instead of the risk distance (~1.2 x ATR). The R-multiple
+is deflated ~2800x, `r_mult >= trail_start_r` can never fire, and the
+trailing stop is dead for the rest of the trade (only the breakeven stop
+protects it). `research/backtest_apex.py` uses the correct
+`abs(entry - orig_sl)` math, so backtests show a live trailing behavior
+that live trading never had. Frozen, NOT fixed here. HPE implements the
+correct distance in `core/strategy_hpe.py` with a regression test
+(`tests/test_strategy_hpe.py::test_r_dist_uses_orig_sl_distance_not_price`).
+Live impact while frozen: REAPER-X/APEX-X winners that reach +1R are
+protected at breakeven but never trail; realized R on trailed winners is
+backtest-optimistic.
