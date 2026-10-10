@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-10T11:38:49.057217+00:00",
+  "generated_at": "2026-10-10T15:09:46.810766+00:00",
   "bars": 13733,
   "span": [
     "2024-05-17 04:00:00+00:00",
@@ -15,7 +15,7 @@
       "test_rows": 3433,
       "labelled_test": 3433,
       "base_rate": 0.351,
-      "auc": 0.5049,
+      "auc": 0.5099,
       "taken": 0,
       "pf_taken": null
     },
@@ -27,7 +27,7 @@
       "test_rows": 3433,
       "labelled_test": 3433,
       "base_rate": 0.3994,
-      "auc": 0.4711,
+      "auc": 0.4822,
       "taken": 0,
       "pf_taken": null
     },
@@ -39,9 +39,9 @@
       "test_rows": 3434,
       "labelled_test": 3410,
       "base_rate": 0.3088,
-      "auc": 0.4726,
-      "taken": 0,
-      "pf_taken": null
+      "auc": 0.4896,
+      "taken": 63,
+      "pf_taken": 0.789
     }
   ],
   "config": {

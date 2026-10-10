@@ -191,47 +191,67 @@ def make_model(seed: int = 666) -> tuple[str, Any]:
         max_depth=3, learning_rate=0.05, max_iter=300, random_state=seed))
 
 
+class PassthroughCal:
+    """No sklearn installed: raw probabilities pass through, honestly
+    labeled - never pretend calibration happened."""
+
+    kind = "passthrough (sklearn unavailable)"
+
+    def fit(self, p: np.ndarray, y: np.ndarray) -> "PassthroughCal":
+        return self
+
+    def predict(self, p: np.ndarray) -> np.ndarray:
+        return np.clip(p, 0.0, 1.0)
+
+
+class IsotonicCal:
+    """Module-level so joblib artifacts stay picklable (a nested class
+    crashed the production dump with PicklingError)."""
+
+    kind = "isotonic"
+
+    def __init__(self) -> None:
+        self.iso: Any = None
+
+    def fit(self, p: np.ndarray, y: np.ndarray) -> "IsotonicCal":
+        from sklearn.isotonic import IsotonicRegression
+
+        self.iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+        self.iso.fit(p, y)
+        return self
+
+    def predict(self, p: np.ndarray) -> np.ndarray:
+        if self.iso is None:
+            raise RuntimeError("calibrator not fitted")
+        return self.iso.predict(p)
+
+
+class PlattCal:
+    kind = "platt"
+
+    def __init__(self) -> None:
+        self.lr: Any = None
+
+    def fit(self, p: np.ndarray, y: np.ndarray) -> "PlattCal":
+        from sklearn.linear_model import LogisticRegression
+
+        self.lr = LogisticRegression()
+        self.lr.fit(p.reshape(-1, 1), y)
+        return self
+
+    def predict(self, p: np.ndarray) -> np.ndarray:
+        if self.lr is None:
+            raise RuntimeError("calibrator not fitted")
+        return self.lr.predict_proba(p.reshape(-1, 1))[:, 1]
+
+
 def make_calibrator(n_rows: int):
     try:
-        from sklearn.isotonic import IsotonicRegression
-        from sklearn.linear_model import LogisticRegression
+        import sklearn.isotonic  # noqa: F401
+        import sklearn.linear_model  # noqa: F401
     except ImportError:
-        # paper-minimal installs ship no sklearn: pass raw probabilities
-        # through, honestly labeled - never pretend calibration happened
-        class Passthrough:
-            kind = "passthrough (sklearn unavailable)"
-
-            def fit(self, p: np.ndarray, y: np.ndarray) -> "Passthrough":
-                return self
-
-            def predict(self, p: np.ndarray) -> np.ndarray:
-                return np.clip(p, 0.0, 1.0)
-
-        return Passthrough()
-
-    class Cal:
-        def __init__(self) -> None:
-            self.kind = "isotonic" if n_rows >= 1000 else "platt"
-            self.iso: IsotonicRegression | None = None
-            self.lr: LogisticRegression | None = None
-
-        def fit(self, p: np.ndarray, y: np.ndarray) -> "Cal":
-            if self.kind == "isotonic":
-                self.iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
-                self.iso.fit(p, y)
-            else:
-                self.lr = LogisticRegression()
-                self.lr.fit(p.reshape(-1, 1), y)
-            return self
-
-        def predict(self, p: np.ndarray) -> np.ndarray:
-            if self.iso is not None:
-                return self.iso.predict(p)
-            if self.lr is None:
-                raise RuntimeError("calibrator not fitted")
-            return self.lr.predict_proba(p.reshape(-1, 1))[:, 1]
-
-    return Cal()
+        return PassthroughCal()
+    return IsotonicCal() if n_rows >= 1000 else PlattCal()
 
 
 def manual_auc(y: np.ndarray, p: np.ndarray) -> float:
