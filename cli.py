@@ -430,4 +430,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    from core.logger import force_utf8_streams
+    force_utf8_streams()
     raise SystemExit(main())

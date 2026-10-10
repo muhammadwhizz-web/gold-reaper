@@ -369,6 +369,9 @@ def _s10_bot_30s() -> None:
         env = dict(os.environ)
         env.update({"SUPERVISOR": "0", "POLL_SECONDS": "10",
                     "BROKER": "PAPER", "PAPER_MODE": "true"})
+        # Windows pipes default to cp1252: a '✓' in bot output must never
+        # kill the child (telemetry is cosmetic; the loop is not).
+        env.setdefault("PYTHONUTF8", "1")
         # capture the bot's output - DEVNULL turns any crash into an
         # undiagnosable 'no fresh heartbeat'. the tail of this file is
         # surfaced in the failure reason and kept for post-mortem.

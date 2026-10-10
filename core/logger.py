@@ -11,8 +11,28 @@ thin frames only.
 from __future__ import annotations
 
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+
+def force_utf8_streams() -> None:
+    """Never let a console glyph kill the bot.
+
+    On Windows the stdout/stderr encoding defaults to the ANSI codepage
+    (cp1252/cp850) whenever output is a pipe or a legacy console — then a
+    single '✓' in telemetry raises UnicodeEncodeError and the process dies.
+    Telemetry glyphs are cosmetic; a trading loop is not. Reconfigure to
+    UTF-8 with errors='replace' so rendering can degrade, never crash.
+    (installer-e2e caught this on windows-2022: the bot died at the
+    '[✓] APEX ONLINE' banner before writing any heartbeat.)
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001 — best effort, never fatal
+            pass
+
 
 RESET = "\033[0m"
 RED = "\033[31m"

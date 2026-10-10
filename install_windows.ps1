@@ -13,6 +13,11 @@ param(
     [switch]$Purge
 )
 $ErrorActionPreference = "Stop"
+# Windows pipes/legacy consoles default to the ANSI codepage (cp1252) - a
+# single '✓' in bot telemetry then raises UnicodeEncodeError and kills the
+# process. Force UTF-8 for this installer, the 12-step gate and every child.
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 $Red = "Red"; $Green = "Green"; $Yel = "Yellow"; $Gray = "DarkGray"
 Write-Host "██ gold-reaper :: windows installer (reliability build)" -ForegroundColor $Red
 
