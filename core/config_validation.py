@@ -62,6 +62,49 @@ def validate_config() -> dict[str, float | int | str]:
     except BrokerHaltError as e:
         raise ConfigError(str(e)) from e
 
+    # ── PAPER_MODE live gate (SD-13 mitigation) ───────────────────
+    # cfg.paper exists but was never read by the factory: BROKER=MT5 with
+    # the .env-template default PAPER_MODE=true used to connect a LIVE
+    # account while the user believed paper mode was active. Live trading
+    # now requires PAPER_MODE to be explicitly false.
+    if values["BROKER"] in ("MT5", "BITGET"):
+        raw_pm = os.getenv("PAPER_MODE", "").strip().lower()
+        if raw_pm not in ("false", "0", "no", "off"):
+            raise ConfigError(
+                f"BROKER={values['BROKER']} is a LIVE venue but "
+                f"PAPER_MODE={os.getenv('PAPER_MODE', '(unset)')!r}. "
+                f"Live trading requires PAPER_MODE=false set explicitly "
+                f"in .env (this gate exists so a leftover template value "
+                f"can never put real money at risk by accident).")
+
+    # ── session windows / entry hours (CFG: empty tuple = 24h trading) ─
+    raw_hours = os.getenv("ENTRY_HOURS_UTC", "")
+    hours_strip = raw_hours.strip()
+    if hours_strip:
+        tokens = [t.strip() for t in hours_strip.split(",")]
+        valid = [t for t in tokens if t.isdigit() and 0 <= int(t) <= 23]
+        if not valid:
+            raise ConfigError(
+                f"ENTRY_HOURS_UTC={raw_hours!r} contains no valid UTC hour "
+                f"(0-23). An empty entry-hours list silently disables the "
+                f"hour filter and trades around the clock - fix .env.")
+    values["ENTRY_HOURS_UTC"] = hours_strip or "(default)"
+
+    # ── live credentials sanity (only when a live venue is requested) ──
+    if values["BROKER"] == "MT5":
+        raw_login = os.getenv("MT5_LOGIN", "12345678").strip()
+        if not raw_login.isdigit() or int(raw_login) <= 0:
+            raise ConfigError(
+                f"MT5_LOGIN={raw_login!r} is not a valid account id. An "
+                f"invalid login makes the adapter skip login() and trade "
+                f"on whatever account the terminal already holds.")
+    if values["BROKER"] == "BITGET":
+        lev = _require_float("BITGET_LEVERAGE", 3.0)
+        if not (0 < lev <= 125):
+            raise ConfigError(
+                f"BITGET_LEVERAGE={lev} must be within (0, 125].")
+        values["BITGET_LEVERAGE"] = lev
+
     # ── capital & risk ─────────────────────────────────────────────
     balance = _require_float("STARTING_BALANCE", 1000.0)
     if balance <= 0:

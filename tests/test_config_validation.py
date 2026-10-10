@@ -76,6 +76,9 @@ class TestAccepts:
 
     def test_broker_aliases_accepted(self, monkeypatch):
         monkeypatch.setenv("BROKER", "EXNESS")
+        # live venue: the PAPER_MODE gate (SD-13 mitigation) demands an
+        # explicit opt-out before a live adapter may connect
+        monkeypatch.setenv("PAPER_MODE", "false")
         assert validate_config()["BROKER"] == "MT5"
 
     def test_daily_loss_negative_entry_normalized(self, monkeypatch):
@@ -88,6 +91,50 @@ class TestAccepts:
             validate_config()
         msg = str(exc.value)
         assert "TARGET_PER_SESSION_USD" in msg and "abc" in msg
+
+
+class TestPaperModeLiveGate:
+    """BROKER=MT5/BITGET with a leftover template PAPER_MODE=true used to
+    connect a LIVE account while the user believed paper mode was active."""
+
+    def test_live_broker_paper_mode_true_rejected(self, monkeypatch):
+        monkeypatch.setenv("BROKER", "MT5")
+        monkeypatch.setenv("PAPER_MODE", "true")
+        with pytest.raises(ConfigError) as exc:
+            validate_config()
+        assert "PAPER_MODE" in str(exc.value)
+
+    def test_live_broker_paper_mode_unset_rejected(self, monkeypatch):
+        monkeypatch.setenv("BROKER", "MT5")
+        monkeypatch.delenv("PAPER_MODE", raising=False)
+        with pytest.raises(ConfigError):
+            validate_config()
+
+    def test_live_broker_paper_mode_false_accepted(self, monkeypatch):
+        monkeypatch.setenv("BROKER", "MT5")
+        monkeypatch.setenv("PAPER_MODE", "false")
+        monkeypatch.delenv("MT5_LOGIN", raising=False)
+        assert validate_config()["BROKER"] == "MT5"
+
+    def test_entry_hours_garbage_rejected(self, monkeypatch):
+        monkeypatch.delenv("BROKER", raising=False)
+        monkeypatch.setenv("ENTRY_HOURS_UTC", "12-13")
+        with pytest.raises(ConfigError) as exc:
+            validate_config()
+        assert "ENTRY_HOURS_UTC" in str(exc.value)
+
+    def test_entry_hours_valid_accepted(self, monkeypatch):
+        monkeypatch.delenv("BROKER", raising=False)
+        monkeypatch.setenv("ENTRY_HOURS_UTC", "12,13")
+        validate_config()  # must not raise
+
+    def test_mt5_login_garbage_rejected(self, monkeypatch):
+        monkeypatch.setenv("BROKER", "MT5")
+        monkeypatch.setenv("PAPER_MODE", "false")
+        monkeypatch.setenv("MT5_LOGIN", "abc")
+        with pytest.raises(ConfigError) as exc:
+            validate_config()
+        assert "MT5_LOGIN" in str(exc.value)
 
 
 class TestDashboardBind:
