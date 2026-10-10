@@ -46,10 +46,16 @@ class BrokerBase(ABC):
     def disconnect(self) -> None: ...
 
     @abstractmethod
-    def balance(self) -> float: ...
+    def balance(self) -> float | None:
+        """Account balance, or None when the venue is unreachable.
+
+        NEVER return 0.0 as a failure sentinel: bot.py diffs balance
+        against the canonical account state to detect fills, so a 0.0
+        from a network blip would book a fake total-loss fill."""
 
     @abstractmethod
-    def equity(self) -> float: ...
+    def equity(self) -> float | None:
+        """Mark-to-market equity, or None when unavailable."""
 
     @abstractmethod
     def candles(self, timeframe: str, count: int) -> dict[str, object]:

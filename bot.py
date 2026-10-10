@@ -66,6 +66,7 @@ def set_standby(on: bool, source: str = "dashboard") -> bool:
         pass
     return standby_on()
 
+import core.risk_apex as _risk_apex_mod  # noqa: E402  (late path binding)
 from brokers.base import BrokerBase  # noqa: E402
 from brokers.factory import (  # noqa: E402
     BrokerHaltError,
@@ -205,6 +206,59 @@ class MetaModelServer:
             return None
 
 
+def _guard_runtime_state() -> None:
+    """Fail closed on corrupt risk-truth files (SD-10/SD-12 mitigation).
+
+    core/risk.py and core/risk_apex.py are FROZEN and swallow parse errors
+    (``load()`` except-pass, ``is_latched()`` except-pass).  A corrupt
+    file must never silently become "fresh defaults" - the bot refuses to
+    start instead, the same philosophy as PaperBroker/AccountState.
+    Raises AccountStateError so main() maps it to exit code 3.
+    """
+    from core.config import CONFIG  # local: guard must see the same path
+    # resolve files via module attributes at CALL time: construction-time
+    # copies of these paths would follow re-pointed globals (the exact
+    # atexit race class P0-B fixed) and break hermetic tests
+    for path in (CONFIG.state_file, _risk_apex_mod.RISK_FILE,
+                 _risk_apex_mod.BREAKER_FILE):
+        if not path.exists():
+            continue
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            raise AccountStateError(
+                f"runtime risk state {path} is corrupt ({e}). Restore or "
+                f"remove it manually - the bot will not silently rebuild "
+                f"risk truth.") from e
+
+
+def _apex_state_stash() -> bytes | None:
+    """Snapshot the persisted apex risk state (SD-9 mitigation, see below)."""
+    risk_file = _risk_apex_mod.RISK_FILE
+    try:
+        return risk_file.read_bytes() if risk_file.exists() else None
+    except OSError:
+        return None
+
+
+def _apex_state_restore(stash: bytes | None) -> None:
+    """SD-9 mitigation (frozen core/risk_apex.py untouched).
+
+    ``ApexRisk.__init__`` runs ``sync_period_starts()`` which ends in
+    ``save()`` - BEFORE ``bot.start()`` ever calls ``load()``.  Every
+    restart therefore overwrote the persisted state with defaults and
+    weekly/monthly breaker memory was lost.  We snapshot the file before
+    construction and restore it after; ``start()`` -> ``load()`` then
+    re-reads the real history and rolls the day/week/month buckets
+    correctly (its own sync_period_starts + save)."""
+    if stash is None:
+        return
+    try:
+        _risk_apex_mod.RISK_FILE.write_bytes(stash)
+    except OSError as e:
+        log.warning("apex state restore failed (continuing on defaults): %s", e)
+
+
 def _append_equity_mark(equity: float, session: str | None) -> None:
     """Session-boundary equity snapshot (append-only CSV).
 
@@ -318,7 +372,11 @@ class ReaperApexBot:
             cprint(f"[*] strategy: HPE ({mode})", GREEN if self._hpe_armed
                    else YELLOW)
         self.risk = RiskManager(cfg)               # legacy state (sessions/day)
+        # SD-9 mitigation: snapshot apex state BEFORE construction (the
+        # frozen constructor saves defaults over the file) and restore after.
+        _apex_stash = _apex_state_stash()
         self.apex = ApexRisk(cfg)                  # APEX survival layer
+        _apex_state_restore(_apex_stash)
         # P0-C: ONE canonical money-truth, hydrated into both risk layers
         try:
             self.account = AccountState.load(cfg.starting_balance)
@@ -587,7 +645,7 @@ class ReaperApexBot:
         # equity sync (P0-C: canonical state first, then hydrate both layers)
         try:
             eq = self.broker.equity()
-            if eq > 0:
+            if eq is not None and eq > 0:
                 self._last_equity = eq
                 self.account.sync_equity(eq)
                 self._hydrate_risk_from_account()
@@ -636,7 +694,9 @@ class ReaperApexBot:
         # broker-agnostic Signal interface, geometry and exit manager)
         sig: Any = None
         if self._hpe is not None:
-            sig = self._hpe.evaluate(h1_closed, h4, ts, ml_prob=ml_prob)
+            sig = self._hpe.evaluate(h1_closed, h4, ts,
+                                     news=news_state.to_dict(),
+                                     ml_prob=ml_prob)
             self._hpe_bookkeep(sig, regime)
             if sig is not None and not self._hpe_armed:
                 audit.log_signal(sig, regime, news_state, {}, ml_prob,
@@ -745,7 +805,10 @@ class ReaperApexBot:
                 cprint(f"  {line}", YELLOW)
         elif d.vetoes:
             st["vetoed"] += 1
-        self._hpe_hist[list(self._hpe_hist)[min(int(d.confidence * 5), 4)]] += 1
+        conf = d.confidence
+        if conf is None or not np.isfinite(conf):
+            conf = 0.0
+        self._hpe_hist[list(self._hpe_hist)[min(max(int(conf * 5), 0), 4)]] += 1
         for m, v in d.votes.items():
             slot = self._hpe_matrix.setdefault(
                 m, {"LONG": 0, "SHORT": 0, "abstain": 0})
@@ -812,27 +875,51 @@ class ReaperApexBot:
                     "price": price})
                 self.broker.close_position(pos.ticket, reason=reason,
                                            intended_price=price)
+                if any(p.ticket == pos.ticket
+                       for p in self.broker.open_positions()):
+                    # close FAILED (rejected / unreachable venue) - the audit
+                    # trail must never claim a position closed when it did
+                    # not; the next tick retries the exit naturally
+                    log.error("position %s exit %s FAILED - still open, "
+                              "will retry next tick", pos.ticket, reason)
+                    audit.log_event("lifecycle", {
+                        "event": "exit_failed", "ticket": pos.ticket,
+                        "reason": reason})
 
         # realized fills: one canonical fill event -> account state -> both
         # risk layers (P0-C: the legacy manager's day/streak gates work again)
         try:
             bal = self.broker.balance()
             st = self.account
-            if abs(bal - st.balance) > 0.01 and st.balance > 0:
+            if bal is None or bal <= 0:
+                # live adapters return None when the venue is unreachable;
+                # treating 0/None as a balance would book a fake total loss
+                log.warning("fill check skipped: broker balance unavailable")
+            elif abs(bal - st.balance) > 0.01 and st.balance > 0:
                 pnl = bal - st.balance
-                st.register_fill(pnl, pnl > 0)
-                st.save()
-                session_name = session_of(now_utc())
-                self.risk.register_fill(session_name, pnl, pnl > 0)
-                self.apex.register_fill(pnl, pnl > 0)
-                audit.log_event("fill", {"pnl": round(pnl, 2),
-                                         "block_pnl": round(
-                                             self.apex.state.current_block.pnl, 2)})
-                if self.apex.state.current_block.done:
-                    cprint(f"[💰] BLOCK TARGET BANKED: "
-                           f"{self.apex.state.current_block.pnl:+.2f} USD", GREEN)
-                    notify("TARGET HIT",
-                           f"4h block banked {self.apex.state.current_block.pnl:+.2f} USD")
+                if abs(pnl) > 0.25 * st.balance:
+                    # sanity clamp: with <=1 position at ~1.5% risk and <=2.5R
+                    # TP no legitimate fill moves the balance by >25%/tick;
+                    # a bigger delta means a broken feed, never money truth
+                    log.error("implausible balance delta %.2f (%.1f%% of "
+                              "balance) - NOT booked as a fill; inspect the "
+                              "broker feed", pnl, 100 * pnl / st.balance)
+                    audit.log_event("fill", {"rejected_implausible":
+                                             round(pnl, 2)})
+                else:
+                    st.register_fill(pnl, pnl > 0)
+                    st.save()
+                    session_name = session_of(now_utc())
+                    self.risk.register_fill(session_name, pnl, pnl > 0)
+                    self.apex.register_fill(pnl, pnl > 0)
+                    audit.log_event("fill", {"pnl": round(pnl, 2),
+                                             "block_pnl": round(
+                                                 self.apex.state.current_block.pnl, 2)})
+                    if self.apex.state.current_block.done:
+                        cprint(f"[💰] BLOCK TARGET BANKED: "
+                               f"{self.apex.state.current_block.pnl:+.2f} USD", GREEN)
+                        notify("TARGET HIT",
+                               f"4h block banked {self.apex.state.current_block.pnl:+.2f} USD")
         except Exception:  # noqa: BLE001
             pass
 
@@ -1041,6 +1128,14 @@ def main() -> int:
     except ConfigError as e:
         cprint(f"[!] CONFIG INVALID - refusing to start: {e}", RED)
         return 2
+
+    # SD-10/SD-12 mitigation: corrupt risk-truth files refuse to start
+    # (the frozen modules themselves fail open - we fail closed here)
+    try:
+        _guard_runtime_state()
+    except AccountStateError as e:
+        cprint(f"[!] RISK STATE REFUSED: {e}", RED)
+        return 3
 
     if args.reset_breakers:
         ApexRisk.reset_breakers()
