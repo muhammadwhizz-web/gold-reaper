@@ -63,7 +63,8 @@ class BrokerBase(ABC):
     def modify_sl(self, ticket: str, new_sl: float) -> bool: ...
 
     @abstractmethod
-    def close_position(self, ticket: str, reason: str = "") -> float | None:
+    def close_position(self, ticket: str, reason: str = "",
+                       intended_price: float | None = None) -> float | None:
         """Returns realized pnl if known, else None."""
 
     @abstractmethod

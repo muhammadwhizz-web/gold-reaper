@@ -206,8 +206,15 @@ def index():
 
 def main() -> int:
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8050
-    print(f"[DASHBOARD] GOLD//REAPER console -> http://localhost:{port}")
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
+    try:
+        from core.config_validation import resolve_dashboard_bind
+        host, port = resolve_dashboard_bind(port)
+    except Exception as e:  # noqa: BLE001 - bind misconfig must be loud
+        print(f"[DASHBOARD] refusing to start: {e}")
+        return 2
+    print(f"[DASHBOARD] GOLD//REAPER console -> http://localhost:{port} "
+          f"(bind {host})")
+    uvicorn.run(app, host=host, port=port, log_level="warning")
     return 0
 
 

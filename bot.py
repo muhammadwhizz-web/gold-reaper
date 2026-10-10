@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import signal
 import sys
@@ -65,11 +66,18 @@ def set_standby(on: bool, source: str = "dashboard") -> bool:
     return standby_on()
 
 from brokers.base import BrokerBase  # noqa: E402
-from brokers.factory import connect_with_failover, create_broker  # noqa: E402
+from brokers.factory import (  # noqa: E402
+    BrokerHaltError,
+    connect_with_failover,
+    create_broker,
+    normalize,
+)
 from brokers.health import HealthMonitor  # noqa: E402
 from brokers.paper_broker import PaperBroker  # noqa: E402
 from core import audit  # noqa: E402
+from core.account_state import AccountState, AccountStateError  # noqa: E402
 from core.config import CONFIG, Config  # noqa: E402
+from core.config_validation import ConfigError, validate_config  # noqa: E402
 from core.indicators import atr as atr_fn  # noqa: E402
 from core.logger import (  # noqa: E402
     GRAY,
@@ -195,9 +203,6 @@ class MetaModelServer:
             return None
 
 
-import json  # noqa: E402  (kept after imports used above)
-
-
 def _append_equity_mark(equity: float, session: str | None) -> None:
     """Session-boundary equity snapshot (append-only CSV).
 
@@ -253,10 +258,12 @@ def _write_heartbeat(mode: str, equity: float | None,
                      price: float | None = None,
                      regime: dict | None = None,
                      session: str | None = None,
-                     position: dict | None = None) -> None:
+                     position: dict | None = None,
+                     broker_info: dict | None = None) -> None:
     """Liveness file for watchdog.py, the tray and the dashboard console.
     Carries the last classified telemetry so the console never has to
-    fabricate regime/broker state while the bot is silent."""
+    fabricate regime/broker state while the bot is silent. broker_info
+    carries the requested-vs-active distinction (P1-B)."""
     try:
         HEARTBEAT_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = HEARTBEAT_FILE.with_suffix(".tmp")
@@ -272,6 +279,9 @@ def _write_heartbeat(mode: str, equity: float | None,
             "session": session,
             "position": position,
             "standby": standby_on(),
+            "requested_broker": (broker_info or {}).get("requested"),
+            "active_broker": (broker_info or {}).get("active"),
+            "broker_label": (broker_info or {}).get("label"),
         }), encoding="utf-8")
         tmp.replace(HEARTBEAT_FILE)
     except Exception:  # noqa: BLE001
@@ -288,6 +298,15 @@ class ReaperApexBot:
         self.strategy = ReaperX(cfg)
         self.risk = RiskManager(cfg)               # legacy state (sessions/day)
         self.apex = ApexRisk(cfg)                  # APEX survival layer
+        # P0-C: ONE canonical money-truth, hydrated into both risk layers
+        try:
+            self.account = AccountState.load(cfg.starting_balance)
+        except AccountStateError as e:
+            cprint(f"[!] {e}", RED)
+            raise
+        self.requested_broker = normalize(cfg.broker)
+        self.active_broker = self.requested_broker
+        self._last_state_save = 0.0
         self.broker: BrokerBase = PaperBroker(cfg)
         self.running = True
         self._last_heartbeat = 0.0
@@ -341,16 +360,38 @@ class ReaperApexBot:
 
         self.risk.load()
         self.apex.load()
+        self._hydrate_risk_from_account()   # P0-C: one truth on restart
         self._store = FeatureStore()
         self._feed = LiveFeatureFeed(self._store)
         self._news = NewsBrain(self._store, self.cfg)
         self._apexx = ApexX(self.cfg, ml_auc=self._meta.auc)
 
-        # broker failover chain via universal factory (MT5 -> BITGET -> PAPER)
-        self.broker, tried = connect_with_failover(self.cfg, log)
+        # P1-B: connect the REQUESTED broker or halt - never swap silently
+        try:
+            self.broker, tried = connect_with_failover(self.cfg, log)
+        except BrokerHaltError as e:
+            cprint("+" + "-" * 66 + "+", RED)
+            cprint(f"| BROKER HALT: {e}".ljust(67) + "|", RED)
+            cprint("|" + " " * 66 + "|", RED)
+            cprint("| live->paper fallback is FORBIDDEN. Fix .env manually "
+                   "or set".ljust(67) + "|", RED)
+            cprint("| BROKER=PAPER for honest paper trading.".ljust(67) + "|", RED)
+            cprint("+" + "-" * 66 + "+", RED)
+            audit.log_event("lifecycle", {"event": "broker_halt",
+                                          "requested": self.requested_broker})
+            return 3
+        self.active_broker = getattr(self.broker, "name", self.requested_broker)
         for kind in tried:
             cprint(f"[*] tried broker  : {kind}", GRAY)
         cprint(f"[*] active broker : {type(self.broker).name}", YELLOW)
+        cprint(f"[*] broker mode   : {self._broker_label()}", YELLOW)
+        if self.active_broker != self.requested_broker:
+            # defensive: factory forbids this path, but never hide it
+            log.warning("broker mismatch: requested=%s active=%s",
+                        self.requested_broker, self.active_broker)
+            notify("BROKER MISMATCH",
+                   f"requested {self.requested_broker} but connected "
+                   f"{self.active_broker} - inspect immediately")
 
         # 24/7 resilience: broker health probes + pid file (watchdog/tray)
         if not isinstance(self.broker, PaperBroker) and \
@@ -390,7 +431,12 @@ class ReaperApexBot:
                                  price=self._last_price,
                                  regime=self._last_regime,
                                  session=self._last_session,
-                                 position=_position_snapshot(self.broker))
+                                 position=_position_snapshot(self.broker),
+                                 broker_info={
+                                     "requested": self.requested_broker,
+                                     "active": self.active_broker,
+                                     "label": self._broker_label(),
+                                 })
                 self._maintenance()
                 time.sleep(self.cfg.poll_seconds)
         except KeyboardInterrupt:
@@ -406,6 +452,36 @@ class ReaperApexBot:
     def _stop(self, *_args) -> None:
         cprint("\n[!] shutdown signal received. reaping quietly...", YELLOW)
         self.running = False
+
+    # ------------------------------------------------------------ P0-C
+    def _broker_label(self) -> str:
+        """Honest broker badge: live vs paper, fallback never silent."""
+        live = self.active_broker in ("MT5", "BITGET")
+        if self.active_broker == self.requested_broker:
+            return f"BROKER: {self.active_broker} " \
+                   f"({'LIVE' if live else 'PAPER'})"
+        return (f"BROKER: {self.active_broker} "
+                f"(fallback from {self.requested_broker})")
+
+    def _hydrate_risk_from_account(self) -> None:
+        """P0-C: push canonical money-truth into BOTH risk layers so their
+        gates always decide on identical inputs (modules stay frozen)."""
+        st = self.account
+        self.risk.state.balance = st.balance
+        self.risk.state.equity = st.equity
+        self.apex.state.balance = st.balance
+        self.apex.state.equity = st.equity
+        self.apex.state.day_pnl = st.day_pnl
+        self.apex.state.consec_losses = st.consec_losses
+        if st.day_date:
+            self.apex.state.day_date = st.day_date
+
+    def _paper_heartbeat_save(self) -> None:
+        """P0-B: flush paper account every 60s while hunting."""
+        if isinstance(self.broker, PaperBroker) and \
+                time.time() - self._last_state_save >= 60:
+            self._last_state_save = time.time()
+            self.broker.heartbeat_save()
 
     def shutdown(self) -> None:
         try:
@@ -433,6 +509,7 @@ class ReaperApexBot:
     def tick(self) -> None:
         self.risk.rollover_day()
         self.apex.sync_period_starts()
+        self._paper_heartbeat_save()          # P0-B: 60s state flush
         ts = now_utc()
 
         # refresh the calendar every 30 min (news dimension)
@@ -469,14 +546,13 @@ class ReaperApexBot:
             return
         self._last_bar_ts = last_bar
 
-        # equity sync
+        # equity sync (P0-C: canonical state first, then hydrate both layers)
         try:
             eq = self.broker.equity()
             if eq > 0:
                 self._last_equity = eq
-                self.apex.state.equity = eq
-                self.apex.state.balance = max(self.apex.state.balance, eq) \
-                    if self.apex.state.balance <= 0 else eq
+                self.account.sync_equity(eq)
+                self._hydrate_risk_from_account()
                 self.risk.update_equity(eq)
                 # session-boundary mark: one snapshot per session transition
                 sess = session_of(ts)
@@ -589,6 +665,8 @@ class ReaperApexBot:
             return
         atr_v = float(atr_fn(h1, self.cfg.atr_period).iloc[-1])
         for pos in self.broker.open_positions():
+            if getattr(pos, "meta", None) and pos.meta.get("closed"):
+                continue  # P0-A: already closed - never double-manage
             bar_high = float(h1["high"].iloc[-1])
             bar_low = float(h1["low"].iloc[-1])
             action, price = self.strategy.manage_exit(
@@ -611,13 +689,27 @@ class ReaperApexBot:
                         pos.trail_active = True
                         pos.sl = price
                         log.info("position %s trailed sl -> %.2f", pos.ticket, price)
+            elif action in ("EXIT_SL", "EXIT_TP") and price:
+                # P0-A: the frozen strategy demanded an exit - EXECUTE it.
+                reason = "SL" if action == "EXIT_SL" else "TP"
+                log.info("position %s exit %s @ %.2f", pos.ticket, reason, price)
+                audit.log_event("lifecycle", {
+                    "event": "exit", "ticket": pos.ticket, "reason": reason,
+                    "price": price})
+                self.broker.close_position(pos.ticket, reason=reason,
+                                           intended_price=price)
 
-        # realized fills: paper broker balance delta -> apex risk ledger
+        # realized fills: one canonical fill event -> account state -> both
+        # risk layers (P0-C: the legacy manager's day/streak gates work again)
         try:
             bal = self.broker.balance()
-            st = self.apex.state
+            st = self.account
             if abs(bal - st.balance) > 0.01 and st.balance > 0:
                 pnl = bal - st.balance
+                st.register_fill(pnl, pnl > 0)
+                st.save()
+                session_name = session_of(now_utc())
+                self.risk.register_fill(session_name, pnl, pnl > 0)
                 self.apex.register_fill(pnl, pnl > 0)
                 audit.log_event("fill", {"pnl": round(pnl, 2),
                                          "block_pnl": round(
@@ -828,6 +920,14 @@ def main() -> int:
                     help="clear latched circuit breakers")
     args = ap.parse_args()
 
+    # P1-C: strict validation BEFORE anything runs - bad config never starts
+    try:
+        validated = validate_config()
+        log.info("config validated: %s", validated)
+    except ConfigError as e:
+        cprint(f"[!] CONFIG INVALID - refusing to start: {e}", RED)
+        return 2
+
     if args.reset_breakers:
         ApexRisk.reset_breakers()
         return 0
@@ -866,9 +966,17 @@ def main() -> int:
     # sleep 30s, rebuild and keep hunting. SIGINT (Ctrl+C) is respected.
     supervisor = os.getenv("SUPERVISOR", "1").strip().lower() not in ("0", "false", "no")
     while True:
-        code = ReaperApexBot(CONFIG).start()
+        try:
+            code = ReaperApexBot(CONFIG).start()
+        except AccountStateError as e:
+            cprint(f"[!] ACCOUNT STATE REFUSED: {e}", RED)
+            return 3
         if code == 0:                      # clean shutdown or Ctrl+C
             return 0
+        if code == 3:                      # P1-B halt: manual fix required
+            log.error("broker halt (exit 3) - supervisor will NOT restart; "
+                      "fix .env and start again")
+            return 3
         if not supervisor:
             return code
         log.error("supervisor: bot exited code=%s - restarting in 30s", code)
@@ -884,8 +992,10 @@ def _spawn_dashboard() -> None:
     try:
         import uvicorn
 
+        from core.config_validation import resolve_dashboard_bind
         from core.dashboard import app
-        uvicorn.run(app, host="0.0.0.0", port=8050, log_level="warning")
+        host, port = resolve_dashboard_bind(8050)
+        uvicorn.run(app, host=host, port=port, log_level="warning")
     except Exception as e:  # noqa: BLE001
         log.warning("dashboard failed: %s", e)
 

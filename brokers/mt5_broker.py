@@ -296,7 +296,8 @@ class ExnessMT5(BrokerBase):
             return bool(res and res.retcode == mt5.TRADE_RETCODE_DONE)
         return False
 
-    def close_position(self, ticket: str, reason: str = "") -> float | None:
+    def close_position(self, ticket: str, reason: str = "",
+                       intended_price: float | None = None) -> float | None:
         if not (MT5_AVAILABLE and self.connected):
             return None
         positions = mt5.positions_get(ticket=int(ticket))

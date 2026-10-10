@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "starting_balance": 1000.0,
+  "cash_balance": 816.92502,
+  "equity": 816.92502,
+  "fees_paid": 0.005,
+  "realized_pnl": -183.07498,
+  "open_positions": [],
+  "closed_trades": [
+    {
+      "ticket": "d0acbd3df6",
+      "side": "LONG",
+      "size_oz": 0.1,
+      "entry": 4220.6998,
+      "exit_price": 2390.0,
+      "reason": "SL",
+      "exit_ts": "2026-10-10T05:34:59.749641+00:00",
+      "pnl": -183.07498,
+      "fee": 0.005
+    }
+  ],
+  "updated_at": "2026-10-10T05:35:01.921519+00:00"
+}

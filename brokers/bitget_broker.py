@@ -241,7 +241,8 @@ class BitgetBroker(BrokerBase):
             cprint(f"[BITGET] modify sl failed: {_explain_ccxt_error(e)}", YELLOW)
             return False
 
-    def close_position(self, ticket: str, reason: str = "") -> float | None:
+    def close_position(self, ticket: str, reason: str = "",
+                       intended_price: float | None = None) -> float | None:
         try:
             self._call(self.x.cancel_order, ticket, self.symbol, attempts=2)
         except Exception:  # noqa: BLE001

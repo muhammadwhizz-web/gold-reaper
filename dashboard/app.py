@@ -22,16 +22,19 @@ Run:   python dashboard/app.py          ->  http://localhost:8080
 from __future__ import annotations
 
 import asyncio
+import base64
 import csv
 import json
+import os
 import random
+import secrets
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
@@ -65,6 +68,60 @@ app = FastAPI(title="GOLD//REAPER", docs_url=None, redoc_url=None)
 # vendored JS for the console UI (chart.umd.min.js) — no API contract change
 app.mount("/vendor", StaticFiles(directory=STATIC / "vendor"), name="vendor")
 
+
+# ────────────────────────────── P1-D: optional HTTP basic auth (middleware)
+
+class _BasicAuth:
+    """Middleware gate: when DASHBOARD_USER/DASHBOARD_PASS are set, every
+    route (kill-switch included) demands HTTP basic auth. Timing-safe
+    compare. Never logs the credentials."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+        self.user = os.getenv("DASHBOARD_USER", "").strip()
+        self.pwd = os.getenv("DASHBOARD_PASS", "").strip()
+        self.enabled = bool(self.user and self.pwd)
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http" or not self.enabled:
+            await self.app(scope, receive, send)
+            return
+        headers = dict(scope.get("headers", []))
+        raw = headers.get(b"authorization", b"")
+        ok = False
+        if raw.startswith(b"Basic "):
+            try:
+                decoded = base64.b64decode(raw[6:]).decode("utf-8", "replace")
+                user, _, pwd = decoded.partition(":")
+                ok = secrets.compare_digest(user, self.user) and \
+                    secrets.compare_digest(pwd, self.pwd)
+            except Exception:  # noqa: BLE001
+                ok = False
+        if ok:
+            await self.app(scope, receive, send)
+            return
+        await send({"type": "http.response.start", "status": 401,
+                    "headers": [(b"www-authenticate", b'Basic realm="GOLD//REAPER"'),
+                                (b"content-length", b"0")]})
+        await send({"type": "http.response.body", "body": b""})
+
+
+app.add_middleware(_BasicAuth)
+
+
+DEMO_BANNER_HTML = (
+    '<div id="demo-mode-banner" role="alert" style="'
+    'background:#3d0a0f;color:#ff5470;border:2px solid #ff1744;'
+    'border-radius:10px;padding:14px 18px;margin:0 0 16px;'
+    'font-size:15px;font-weight:700;letter-spacing:1px;'
+    'text-align:center;box-shadow:0 0 24px rgba(255,23,68,.35);">'
+    '&#9888; DEMO MODE &#8212; NOT REAL DATA. '
+    '<span style="font-weight:400;color:#e6a3a8;font-size:13px;">'
+    'This console is showing a seeded mock session. Start the bot '
+    '(python bot.py) for live state - mock and real data must never '
+    'look identical.</span></div>'
+)
+
 MOCK_SEED = 666
 
 DIMENSIONS = ["trend", "order-flow", "volatility", "structure",
@@ -91,15 +148,26 @@ def _brokers_mock() -> list[dict]:
 def _brokers_live(heartbeat: dict | None) -> list[dict]:
     """Honest broker rows for live mode: never invent latency.
     Paper reflects real bot liveness; the others report what we know
-    (standby = configured-but-not-primary / not connected here)."""
+    (standby = configured-but-not-primary / not connected here).
+    Carries the requested-vs-active distinction (P1-B): a paper row
+    labels itself 'fallback from X' when the user asked for X."""
     fresh = bool(heartbeat and heartbeat.get("fresh"))
     mode = (heartbeat or {}).get("mode") or "PAPER"
+    requested = str((heartbeat or {}).get("requested_broker", mode))
+    active = str((heartbeat or {}).get("active_broker", mode))
     paper_state = "up" if fresh else "down"
+    if active != requested:
+        label = f"Paper (fallback from {requested})"
+    else:
+        label = f"Paper ({mode})" if fresh else "Paper"
     return [
-        {"name": "MT5 (Exness)", "state": "standby", "latency_ms": None},
-        {"name": "Bitget", "state": "standby", "latency_ms": None},
-        {"name": f"Paper ({mode})" if fresh else "Paper",
-         "state": paper_state, "latency_ms": None},
+        {"name": f"MT5 (Exness) · requested={requested}",
+         "state": "up" if active == "MT5" else "standby",
+         "latency_ms": None},
+        {"name": f"Bitget · requested={requested}",
+         "state": "up" if active == "BITGET" else "standby",
+         "latency_ms": None},
+        {"name": label, "state": paper_state, "latency_ms": None},
     ]
 
 
@@ -123,6 +191,9 @@ def _heartbeat_telemetry() -> dict | None:
             "mode": str(hb.get("mode", "")),
             "price": hb.get("price"),
             "session": hb.get("session"),
+            "requested_broker": hb.get("requested_broker"),
+            "active_broker": hb.get("active_broker"),
+            "broker_label": hb.get("broker_label"),
             "regime": ({"name": reg.get("regime"),
                         "confidence": conf, "engine": reg.get("engine")}
                        if reg else None),
@@ -372,6 +443,9 @@ def state_payload() -> dict:
                 "regime": fresh_regime,
                 "dims": None,  # per-dimension values only exist inside the bot
                 "brokers": _brokers_live(hb),
+                "broker_requested": (hb or {}).get("requested_broker"),
+                "broker_active": (hb or {}).get("active_broker"),
+                "broker_label": (hb or {}).get("broker_label"),
                 "streak": max(0, risk.get("wins", 0) - risk.get("losses", 0)),
                 "hunt_window": "12-14 UTC",
                 "geometry": "SL 1.2xATR · TP 2.0R · risk 1%",
@@ -683,7 +757,15 @@ def log_lines_mock(n: int = 14) -> list[str]:
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    return (STATIC / "index.html").read_text()
+    """Console shell. P1-D: when mock mode is active the served HTML
+    carries a large red DEMO banner injected server-side - mock and
+    real data must never look identical."""
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    if not _is_live():
+        marker = "<body>"
+        if marker in html:
+            html = html.replace(marker, marker + "\n" + DEMO_BANNER_HTML, 1)
+    return html
 
 
 @app.get("/favicon.ico")
@@ -802,8 +884,19 @@ def api_stream():
 
 def main() -> int:
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
-    print(f"GOLD//REAPER console -> http://localhost:{port}")
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
+    try:
+        from core.config_validation import resolve_dashboard_bind
+        host, port = resolve_dashboard_bind(port)
+    except SystemExit:
+        raise
+    except Exception as e:  # noqa: BLE001 - bind misconfig must be loud
+        print(f"[DASHBOARD] refusing to start: {e}")
+        return 2
+    auth = "on" if (os.getenv("DASHBOARD_USER") and
+                    os.getenv("DASHBOARD_PASS")) else "off"
+    print(f"GOLD//REAPER console -> http://{host}:{port} "
+          f"(bind {host}, basic-auth {auth})")
+    uvicorn.run(app, host=host, port=port, log_level="warning")
     return 0
 
 

@@ -1,10 +1,20 @@
 """
 GOLD REAPER :: broker factory
 =============================
-Reads BROKER from .env / config and returns the right adapter, with a
-configurable failover chain (default MT5 -> BITGET -> PAPER). The bot
-never dies: if the primary broker cannot connect, the next one is tried,
-and PAPER is the terminal fallback.
+Builds the requested broker adapter and connects it EXPLICITLY.
+
+REPAIR CONTRACT (branch fix/reliability-v1, P1-B):
+  - ``requested_broker`` (from .env / CLI, normalized) and
+    ``active_broker`` (actually connected) are tracked as two values.
+  - A live broker that fails to connect HALTS the bot with a precise
+    error (BrokerHaltError -> exit code 3). The bot NEVER silently swaps
+    live <-> paper: if you asked for MT5 you will never wake up on a
+    paper account that looks live.
+  - Paper fallback for a live request is forbidden even with
+    ALLOW_PAPER_FALLBACK=true (that flag only ever governs runs where
+    the user explicitly requested paper).
+  - Live order failures must never be reported as successful: adapters
+    return ok=False and the bot journals them as rejections.
 """
 from __future__ import annotations
 
@@ -18,14 +28,36 @@ ALIASES = {
     "PAPER": "PAPER", "DEMO": "PAPER", "TEST": "PAPER",
 }
 
+LIVE_BROKERS = ("MT5", "BITGET")
+
+
+class BrokerHaltError(RuntimeError):
+    """The requested broker could not be brought up safely.
+
+    The bot must halt (exit code 3) and require a manual .env change -
+    never fall back to paper silently."""
+
 
 def normalize(choice: str) -> str:
-    return ALIASES.get(str(choice).strip().upper(), "PAPER")
+    """Normalize a broker name. Unknown names are NOT coerced to PAPER
+    silently anymore - normalize_valid() is the strict path."""
+    return ALIASES.get(str(choice).strip().upper(), "UNKNOWN")
+
+
+def normalize_valid(choice: str) -> str:
+    """Strict normalization. Raises BrokerHaltError on unknown names
+    (P1-C sibling: no silent PAPER degradation for garbage config)."""
+    kind = normalize(choice)
+    if kind == "UNKNOWN":
+        raise BrokerHaltError(
+            f"unknown broker {choice!r} - valid: MT5, BITGET, PAPER "
+            f"(fix BROKER in .env)")
+    return kind
 
 
 def create_broker(cfg, choice: str | None = None) -> BrokerBase:
-    """Build one adapter. Bad names degrade to PAPER, never raise."""
-    kind = normalize(choice or cfg.broker)
+    """Build one adapter for a VALID kind (raises on unknown names)."""
+    kind = normalize_valid(choice or cfg.broker)
     if kind == "MT5":
         from brokers.mt5_broker import ExnessMT5
         return ExnessMT5(cfg)
@@ -37,47 +69,43 @@ def create_broker(cfg, choice: str | None = None) -> BrokerBase:
 
 
 def failover_chain(cfg) -> list[str]:
-    """Primary-first chain. FAILOVER_CHAIN='BITGET,MT5' overrides order.
+    """P1-B: the chain is exactly the requested broker.
 
-    Paper mode (PAPER_MODE=true or BROKER=PAPER) always collapses to a
-    single-element chain: paper is where you TEST, not where you hide.
+    The old MT5 -> BITGET -> PAPER auto-failover is gone: a live broker
+    failing must halt the bot, not quietly re-route to another venue or
+    to paper. Kept as a function because tests and tooling import it.
     """
-    if getattr(cfg, "paper", False) or normalize(cfg.broker) == "PAPER":
-        return ["PAPER"]
-    raw = os.getenv("FAILOVER_CHAIN", "").strip()
-    if raw:
-        chain: list[str] = []
-        for part in raw.split(","):
-            k = normalize(part)
-            if k not in chain:
-                chain.append(k)
-        return chain
-    chain = [normalize(cfg.broker)]
-    for k in ("MT5", "BITGET", "PAPER"):
-        if k not in chain:
-            chain.append(k)
-    return chain
+    return [normalize_valid(cfg.broker)]
+
+
+def paper_fallback_allowed(cfg) -> bool:
+    """Paper may only ever trade when the user REQUESTED paper. The
+    ALLOW_PAPER_FALLBACK flag exists for explicit opt-in tooling and
+    still cannot authorize a live->paper swap."""
+    return os.getenv("ALLOW_PAPER_FALLBACK", "").strip().lower() in \
+        ("1", "true", "yes", "on") and normalize(cfg.broker) == "PAPER"
 
 
 def connect_with_failover(cfg, log) -> tuple[BrokerBase, list[str]]:
-    """Try every link in the chain. Returns (broker, attempted).
+    """Connect the requested broker or raise BrokerHaltError.
 
-    Guaranteed to return a connected PaperBroker even if everything fails.
-    """
-    attempted: list[str] = []
-    for kind in failover_chain(cfg):
-        attempted.append(kind)
-        broker = create_broker(cfg, kind)
-        try:
-            if broker.connect():
-                return broker, attempted
-        except Exception as e:  # noqa: BLE001
-            if log:
-                log.warning("broker %s connect error: %s", kind, e)
-        try:
-            broker.disconnect()
-        except Exception:  # noqa: BLE001
-            pass
-    fallback = create_broker(cfg, "PAPER")
-    fallback.connect()
-    return fallback, attempted
+    Returns (broker, attempted). Never returns a different broker kind
+    than the one requested: live -> paper swaps are forbidden (P1-B)."""
+    requested = normalize_valid(cfg.broker)
+    attempted: list[str] = [requested]
+    broker = create_broker(cfg, requested)
+    try:
+        if broker.connect():
+            return broker, attempted
+        reason = getattr(broker, "status_reason", "") or \
+            "connect() returned False"
+    except Exception as e:  # noqa: BLE001 - classified into a halt
+        reason = f"{type(e).__name__}: {e}"
+    try:
+        broker.disconnect()
+    except Exception:  # noqa: BLE001
+        pass
+    raise BrokerHaltError(
+        f"requested broker {requested} failed to connect: {reason}. "
+        f"Fix the broker config in .env (or set BROKER=PAPER for honest "
+        f"paper trading) and start again. No silent fallback was taken.")
