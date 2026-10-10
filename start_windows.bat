@@ -24,7 +24,17 @@ if exist "%APPDIR%\bot.py" (
     if not defined VENV if exist "%ROOT%venv\Scripts\python.exe" set "VENV=%ROOT%venv"
 )
 if not defined VENV (
-    echo [!] no venv found. Run install_windows.ps1 first.
+    echo [!] no venv found - self-healing by running the installer...
+    rem P1-E: a missing venv triggers the installer (idempotent) instead
+    rem of dying with a confusing error.
+    set "GR_NONINTERACTIVE=1"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%install_windows.ps1"
+    if exist "%ROOT%.venv\Scripts\python.exe" set "VENV=%ROOT%.venv"
+    if not defined VENV if exist "%ROOT%app\.venv\Scripts\python.exe" set "VENV=%ROOT%app\.venv"
+    if exist "%ROOT%venv\Scripts\python.exe" set "VENV=%ROOT%venv"
+)
+if not defined VENV (
+    echo [!] self-heal failed - install_windows.ps1 did not produce a venv.
     pause
     exit /b 1
 )

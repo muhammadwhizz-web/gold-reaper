@@ -1,142 +1,178 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-#  GOLD REAPER :: macOS installer (bonus tier)
+#  GOLD REAPER :: macOS one-command installer (P1-E repair build)
 #═════════════════════════════════════════════════════════════════
-#  1. Homebrew-based python 3.11 install if missing
-#  2. app copy -> ~/.local/share/gold-reaper/app + venv
-#  3. /Applications/Gold Reaper.app (icon.icns, double-clickable)
-#  4. LaunchAgent com.goldreaper.bot (KeepAlive, RunAtLoad) -> 24/7
-#  5. first-time setup wizard
-#
-#  usage:  chmod +x install_macos.sh && ./install_macos.sh
+#  Contract: brew python@3.12 (validated) -> venv at project root ->
+#  pinned requirements.lock -> LaunchAgent with KeepAlive -> desktop
+#  (.app) icon -> installer/health_check.py GATE: SUCCESS only on pass.
+#  Idempotent; never overwrites .env.
+#    ./install_macos.sh --uninstall [--purge]
 # ═══════════════════════════════════════════════════════════════
 set -e
 RED='\033[31m'; GREEN='\033[32m'; YEL='\033[33m'; GRAY='\033[90m'; NC='\033[0m'
-echo -e "${RED}██ gold-reaper :: macOS installer${NC}"
+echo -e "${RED}██ gold-reaper :: macOS installer (reliability build)${NC}"
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
-SHARE="$HOME/.local/share/gold-reaper"
-APPDIR="$SHARE/app"
-VENV="$SHARE/venv"
-APPBUNDLE="/Applications/Gold Reaper.app"
+APPDIR="$HOME/Library/Application Support/GoldReaper"
+VENV="$APPDIR/.venv"
 PLIST_DIR="$HOME/Library/LaunchAgents"
+PLIST="$PLIST_DIR/com.goldreaper.bot.plist"
+APPS_DIR="$HOME/Applications"
+ARCH="$(uname -m)"
 
 ok()   { echo -e "${GREEN}[OK]${NC} $1"; }
 step() { echo -e "${YEL}[i]${NC} $1"; }
-die()  { echo -e "${RED}[!]${NC} $1"; exit 1; }
+warn() { echo -e "${YEL}[!]${NC} $1"; }
+die()  { echo -e "${RED}[!] INSTALL FAILED: $1${NC}"; exit 1; }
 
-[ "$(uname)" = "Darwin" ] || die "this script is for macOS (use install_linux.sh on Linux)"
-
-# ---- 1. homebrew + python ------------------------------------------------
-if ! command -v brew >/dev/null; then
-  step "Homebrew missing -> installing (needs your password)..."
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
-    || die "brew install failed - install Homebrew from https://brew.sh and re-run"
-  eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv)"
+if [ "${1:-}" = "--uninstall" ]; then
+  step "unloading + removing LaunchAgent"
+  launchctl unload "$PLIST" 2>/dev/null || true
+  rm -f "$PLIST"
+  rm -rf "$APPS_DIR/Gold Reaper.app"
+  rm -rf "$VENV"
+  ok "agent, app bundle and venv removed"
+  echo "  app dir   : $APPDIR (kept - data/ + .env preserved; --purge wipes)"
+  [ "${2:-}" = "--purge" ] && { rm -rf "$APPDIR"; ok "PURGED $APPDIR"; }
+  exit 0
 fi
-if ! command -v python3 >/dev/null; then
-  step "installing python via brew..."
-  brew install python@3.12
-fi
-v="$(python3 -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
-ok "python $v"
 
-# ---- 2. app copy + venv ----------------------------------------------------
+py_in_range() {
+  [ -x "$1" ] || return 1
+  "$1" -c 'import sys; sys.exit(0 if (3,10)<=(sys.version_info[0],sys.version_info[1])<=(3,12) else 1)' 2>/dev/null
+}
+
+# ── 1. python via Homebrew (validated) ─────────────────────────
+PYBIN=""
+step "acquiring python 3.10-3.12 ($ARCH)"
+for cand in "$(command -v python3.12 || true)" \
+            "$(command -v python3.11 || true)" \
+            "$(command -v python3.10 || true)" \
+            "/opt/homebrew/bin/python3.12" "/usr/local/bin/python3.12" \
+            "$(command -v python3 || true)"; do
+  if py_in_range "$cand"; then PYBIN="$cand"; break; fi
+done
+if [ -z "$PYBIN" ] && command -v brew >/dev/null; then
+  step "brew install python@3.12"
+  brew install python@3.12 || die "brew failed to install python@3.12.
+  Install manually: https://www.python.org/downloads/ and re-run."
+  for cand in "/opt/homebrew/bin/python3.12" "/usr/local/bin/python3.12" \
+              "$(brew --prefix python@3.12)/bin/python3.12"; do
+    if py_in_range "$cand"; then PYBIN="$cand"; break; fi
+  done
+fi
+[ -n "$PYBIN" ] || die "no python 3.10-3.12 found and brew is unavailable.
+Install python 3.12 (https://www.python.org/downloads/ or
+  brew install python@3.12) and re-run."
+ok "python validated: $PYBIN ($("$PYBIN" -V 2>&1))"
+
+# ── 2. stop old agent (idempotency) ────────────────────────────
+step "stopping any previous GoldReaper LaunchAgent"
+launchctl unload "$PLIST" 2>/dev/null || true
+
+# ── 3. copy app (preserve data/ + .env) ────────────────────────
 step "copying app -> $APPDIR"
-mkdir -p "$SHARE" "$APPDIR" "$SHARE/logs"
-rsync -a --delete \
-  --exclude '.git' --exclude '.venv' --exclude 'venv' \
-  --exclude '__pycache__' --exclude '*.pyc' \
-  --exclude 'data' --exclude '.env' --exclude 'logs' \
-  "$SRC"/ "$APPDIR"/
-mkdir -p "$APPDIR/data"
-ln -sfn "app/data/reaper.log" "$SHARE/logs/reaper.log"
+mkdir -p "$APPDIR"
+if [ "$SRC" != "$APPDIR" ]; then
+  rsync -a --delete \
+    --exclude '.git' --exclude '.venv' --exclude 'venv' \
+    --exclude '__pycache__' --exclude '*.pyc' \
+    --exclude 'data' --exclude 'logs' --exclude '.env' \
+    "$SRC"/ "$APPDIR"/
+fi
+mkdir -p "$APPDIR/data" "$APPDIR/logs"
 
-step "creating venv..."
-python3 -m venv "$VENV"
+# ── 4. venv at project root + pinned install ───────────────────
+step "creating venv at $APPDIR/.venv (project root)"
+"$PYBIN" -m venv "$VENV"
 "$VENV/bin/pip" install --upgrade pip -q
-step "installing requirements..."
-"$VENV/bin/pip" install -r "$APPDIR/requirements.txt" -q
-ok "APEX stack installed (MetaTrader5 auto-skipped on macOS)"
+if [ -f "$APPDIR/requirements.lock" ]; then
+  step "installing PINNED deps from requirements.lock"
+  "$VENV/bin/pip" install -r "$APPDIR/requirements.lock" -q || \
+    die "pinned install failed"
+else
+  warn "requirements.lock missing -> requirements-paper.txt"
+  "$VENV/bin/pip" install -r "$APPDIR/requirements-paper.txt" -q || \
+    die "dependency install failed"
+fi
+ok "paper stack installed"
 
-# ---- 3. wizard ---------------------------------------------------------------
 if [ ! -f "$APPDIR/.env" ]; then
   step "first-time setup wizard"
-  (cd "$APPDIR" && "$VENV/bin/python" -m setup.wizard) || true
+  (cd "$APPDIR" && "$VENV/bin/python" -m setup.wizard) || \
+    warn "wizard skipped - runs at first launch"
 else
-  ok ".env preserved"
+  ok ".env already exists (never overwritten)"
 fi
 
-# ---- 4. .app bundle ------------------------------------------------------------
-step "creating $APPBUNDLE"
+# ── 5. .app bundle (desktop icon) ───────────────────────────────
+step "building Gold Reaper.app"
+APPBUNDLE="$APPS_DIR/Gold Reaper.app"
 mkdir -p "$APPBUNDLE/Contents/MacOS" "$APPBUNDLE/Contents/Resources"
-cp -f "$SRC/assets/icon.icns" "$APPBUNDLE/Contents/Resources/icon.icns" 2>/dev/null \
-  || cp -f "$APPDIR/assets/icon.icns" "$APPBUNDLE/Contents/Resources/icon.icns"
-cp -f "$SRC/start.command" "$APPBUNDLE/Contents/MacOS/gold-reaper" 2>/dev/null \
-  || cp -f "$APPDIR/start.command" "$APPBUNDLE/Contents/MacOS/gold-reaper"
-chmod +x "$APPBUNDLE/Contents/MacOS/gold-reaper"
-
+cp -f "$APPDIR/assets/icon.icns" "$APPBUNDLE/Contents/Resources/goldreaper.icns" 2>/dev/null || true
 cat > "$APPBUNDLE/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleName</key>              <string>Gold Reaper</string>
-    <key>CFBundleDisplayName</key>       <string>Gold Reaper</string>
-    <key>CFBundleIdentifier</key>        <string>com.goldreaper.app</string>
-    <key>CFBundleVersion</key>           <string>2.2.0</string>
-    <key>CFBundleShortVersionString</key><string>2.2.0</string>
-    <key>CFBundleExecutable</key>        <string>gold-reaper</string>
-    <key>CFBundleIconFile</key>          <string>icon</string>
-    <key>CFBundlePackageType</key>       <string>APPL</string>
-    <key>LSMinimumSystemVersion</key>    <string>12.0</string>
-    <key>NSHighResolutionCapable</key>   <true/>
-</dict>
-</plist>
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>Gold Reaper</string>
+  <key>CFBundleIdentifier</key><string>com.goldreaper.bot</string>
+  <key>CFBundleIconFile</key><string>goldreaper</string>
+  <key>CFBundleExecutable</key><string>launch</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+</dict></plist>
 EOF
-ok ".app bundle ready (Dock icon while running)"
+cat > "$APPBUNDLE/Contents/MacOS/launch" <<EOF
+#!/bin/bash
+exec "$APPDIR/start.command"
+EOF
+chmod +x "$APPBUNDLE/Contents/MacOS/launch"
+ok "app bundle: $APPBUNDLE"
 
-# ---- 5. LaunchAgent (24/7) ------------------------------------------------------
-step "registering LaunchAgent com.goldreaper.bot"
+# ── 6. LaunchAgent (KeepAlive = auto-restart) ──────────────────
+step "registering LaunchAgent (KeepAlive)"
 mkdir -p "$PLIST_DIR"
-cat > "$PLIST_DIR/com.goldreaper.bot.plist" <<EOF
+cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>          <string>com.goldreaper.bot</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$VENV/bin/python</string>
-        <string>$APPDIR/bot.py</string>
-    </array>
-    <key>WorkingDirectory</key> <string>$APPDIR</string>
-    <key>RunAtLoad</key>       <true/>
-    <key>KeepAlive</key>       <true/>
-    <key>ThrottleInterval</key> <integer>30</integer>
-    <key>StandardOutPath</key> <string>$SHARE/logs/launchagent.log</string>
-    <key>StandardErrorPath</key><string>$SHARE/logs/launchagent.err.log</string>
-</dict>
-</plist>
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.goldreaper.bot</string>
+  <key>WorkingDirectory</key><string>$APPDIR</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$VENV/bin/python</string>
+    <string>$APPDIR/bot.py</string>
+  </array>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>StandardOutPath</key><string>$APPDIR/logs/bot.log</string>
+  <key>StandardErrorPath</key><string>$APPDIR/logs/bot.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PYTHONUTF8</key><string>1</string></dict>
+</dict></plist>
 EOF
-launchctl unload "$PLIST_DIR/com.goldreaper.bot.plist" 2>/dev/null || true
-launchctl load "$PLIST_DIR/com.goldreaper.bot.plist"
-ok "LaunchAgent loaded (starts at login, restarts if it dies)"
+ok "LaunchAgent registered (KeepAlive, 30s throttle)"
 
-# ---- 6. success ------------------------------------------------------------------
+# ── 7. HEALTH CHECK GATE ────────────────────────────────────────
+step "running the installation health check (12 steps)"
+if ! (cd "$APPDIR" && "$VENV/bin/python" installer/health_check.py); then
+  die "health check did not pass. Nothing was started, nothing claims
+  success. Fix the step above and re-run (idempotent)."
+fi
+
+step "loading agent (gate passed)"
+launchctl load "$PLIST" 2>/dev/null || true
+
 echo ""
 echo -e "${GREEN}════════════════════════════════════════════════${NC}"
-echo -e "${GREEN} GOLD REAPER INSTALLED${NC}"
+echo -e "${GREEN} GOLD REAPER INSTALLED — health check passed${NC}"
 echo -e "${GREEN}════════════════════════════════════════════════${NC}"
-echo "  app bundle : $APPBUNDLE (double-click to launch + dashboard)"
 echo "  app        : $APPDIR"
+echo "  venv       : $VENV"
 echo "  dashboard  : http://localhost:8080"
-echo "  bot log    : $APPDIR/data/reaper.log"
-echo "  stop bot   : launchctl unload ~/Library/LaunchAgents/com.goldreaper.bot.plist"
-echo "  uninstall  : see docs/TROUBLESHOOTING.md #13"
+echo "  doctor     : $VENV/bin/python $APPDIR/cli.py doctor"
+echo "  uninstall  : $SRC/install_macos.sh --uninstall [--purge]"
 echo ""
 echo -e "${RED}  RULE #1: PAPER_MODE=true for at least 2 weeks.${NC}"
-echo -e "${RED}  RULE #2: never risk money you cannot burn.${NC}"
 echo -e "${GREEN}════════════════════════════════════════════════${NC}"

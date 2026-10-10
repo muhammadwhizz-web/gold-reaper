@@ -17,6 +17,19 @@ else
   APPDIR="$ROOT"; VENV="$ROOT/.venv"; [ -d "$ROOT/venv" ] && VENV="$ROOT/venv"
 fi
 PY="$VENV/bin/python"
+# P1-E self-heal: a missing venv now REPAIRS itself by running the
+# installer (idempotent) instead of exiting with a confusing error.
+if [ ! -x "$PY" ]; then
+  echo "[!] venv missing at $VENV - running the installer (self-heal)..."
+  if [ -x "$APPDIR/install_linux.sh" ]; then
+    GR_NONINTERACTIVE=1 bash "$APPDIR/install_linux.sh" || \
+      { echo "[!] self-heal install failed - fix the errors above and re-run"; exit 1; }
+  else
+    echo "[!] install_linux.sh not found - run the installer from the repo root"; exit 1
+  fi
+  [ -x "$PY" ] || { echo "[!] installer ran but $PY still missing"; exit 1; }
+fi
+
 cd "$APPDIR" || exit 1
 mkdir -p logs data
 export PYTHONUTF8=1 PYTHONIOENCODING=utf-8

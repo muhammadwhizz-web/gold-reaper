@@ -117,6 +117,13 @@ APEX-X (ensemble):         regime-routed modules vote:
 ```
 
 Details and findings: [docs/STRATEGY.md](docs/STRATEGY.md)
+Every tuned number, its env key, its constraint and its consumer module
+lives in one table: [docs/PARAMETERS.md](docs/PARAMETERS.md) — the single
+source of truth (README and docstrings reference it, never restate it).
+The reliability contract of the current release (exit execution, paper
+persistence, feed validation, explicit failover, install gate) is
+documented in [docs/AUDIT.md](docs/AUDIT.md) and proven in
+[docs/REPAIR_REPORT.md](docs/REPAIR_REPORT.md).
 
 ## Backtest verdict — the honest section
 

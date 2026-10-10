@@ -1,0 +1,6 @@
+# GOLD REAPER :: LIVE-venue extras (MT5 / desktop ops)
+# Install ONLY on a machine that will host a live broker connection:
+#   pip install -r requirements-live.txt
+-r requirements-paper.txt
+MetaTrader5>=5.0.45; sys_platform == "win32"
+pystray>=0.19.5

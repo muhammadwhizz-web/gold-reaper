@@ -1,0 +1,17 @@
+# GOLD REAPER :: minimal PAPER-mode stack (the safe default install)
+# Everything the bot needs in paper mode: feed, simulation, risk truth,
+# console. Live-venue extras live in requirements-live.txt.
+pandas>=2.0.0
+numpy>=1.26.0
+ccxt>=4.2.0
+fastapi>=0.110.0
+uvicorn>=0.29.0
+duckdb>=1.0.0
+rich>=13.7.0
+yfinance>=0.2.40
+python-dotenv>=1.0.0
+# shipped console's SSE transport (dashboard/app.py) - documented deviation
+# from the minimal repair-spec list: the console ships in paper installs
+sse-starlette>=2.0.0
+# colored console on Windows (core/logger.py import guard)
+colorama>=0.4.6; sys_platform == "win32"

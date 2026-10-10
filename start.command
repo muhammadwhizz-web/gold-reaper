@@ -17,7 +17,17 @@ export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
 port="${DASHBOARD_PORT:-8080}"
 
 PY="$VENV/bin/python"
-[ -x "$PY" ] || { echo "[!] venv missing at $VENV - run install_macos.sh first"; exit 1; }
+# P1-E self-heal: missing venv -> run the installer instead of dying
+if [ ! -x "$PY" ]; then
+  echo "[!] venv missing at $VENV - running the installer (self-heal)..."
+  if [ -x "$APPDIR/install_macos.sh" ]; then
+    GR_NONINTERACTIVE=1 bash "$APPDIR/install_macos.sh" || \
+      { echo "[!] self-heal install failed - fix the errors above and re-run"; exit 1; }
+  else
+    echo "[!] install_macos.sh not found - run the installer from the repo root"; exit 1
+  fi
+  [ -x "$PY" ] || { echo "[!] installer ran but $PY still missing"; exit 1; }
+fi
 
 if [ ! -f .env ]; then
   echo "[i] first run - starting setup wizard..."

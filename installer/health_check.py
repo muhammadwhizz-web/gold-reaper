@@ -266,7 +266,7 @@ def _s6_features() -> None:
                      f"({X.shape[1]} cols built)",
                   "features/build_features.py changed? file an issue")
             return
-        if not np.isfinite(X[EXPECTED_FEATURE_COLS].tail(1).to_numpy(
+        if not np.isfinite(X[list(EXPECTED_FEATURE_COLS)].tail(1).to_numpy(
                 dtype=float)).all():
             _fail(r, "expected feature columns contain NaN/inf on last row",
                   "indicator warmup too short - ingest more history")
