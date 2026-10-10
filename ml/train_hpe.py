@@ -261,8 +261,10 @@ def fold_pf(r_multiples: np.ndarray) -> float | None:
 
 
 def walkforward(X: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
-                ) -> tuple[pd.Series, list[dict], list]:
-    """Expanding-window training with inner calibration. Returns OOS probs."""
+                ) -> tuple[pd.Series, list[dict], list, dict]:
+    """Expanding-window training with inner calibration. Returns OOS probs
+    plus the LAST fold's fitted (model, calibrator) so the production
+    artifact can carry a servable model instead of an empty shell."""
     cols = feature_columns(X)
     Xf = X[cols].replace([np.inf, -np.inf], np.nan).ffill().fillna(0.0)
     y = X["label_hpe_tp_before_sl"].astype(float)
@@ -271,6 +273,7 @@ def walkforward(X: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
     probs = pd.Series(np.nan, index=X.index)
     reports: list[dict] = []
     engines: list[str] = []
+    artifacts: dict = {"model": None, "calibrator": None, "columns": cols}
     try:
         from sklearn.metrics import roc_auc_score
     except ImportError:
@@ -300,6 +303,7 @@ def walkforward(X: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
         cal = make_calibrator(len(cal_idx)).fit(p_cal, y.values[cal_idx])
         p_te = cal.predict(model.predict_proba(Xf.values[te])[:, 1])
         probs.iloc[te] = np.clip(p_te, 0.0, 1.0)
+        artifacts = {"model": model, "calibrator": cal, "columns": cols}
 
         te_lab_mask = np.isfinite(y.values[te])
         y_te, p_te_lab = y.values[te][te_lab_mask], p_te[te_lab_mask]
@@ -320,7 +324,7 @@ def walkforward(X: pd.DataFrame, folds: list[tuple[np.ndarray, np.ndarray]]
             "pf_taken": None if pf is None else (round(pf, 3)
                                                  if np.isfinite(pf) else 999.0),
         })
-    return probs, reports, engines
+    return probs, reports, engines, artifacts
 
 
 class SequenceModel:
@@ -454,7 +458,7 @@ def main() -> int:
     folds = purged_walkforward(X)
     print(f" CV      : expanding-window, {len(folds)} OOS folds, "
           f"purge+embargo {EMBARGO} bars")
-    probs, reports, engines = walkforward(X, folds)
+    probs, reports, engines, artifacts = walkforward(X, folds)
 
     seq = SequenceModel()
     seq_note = "torch sequence model: UNAVAILABLE (soft vote = boosted trees)"
@@ -498,7 +502,12 @@ def main() -> int:
     import joblib
     last = [r for r in reports if not r.get("skipped")]
     engine = last[-1]["engine"] if last else "none"
+    # the artifact now carries the fitted model + calibrator so live
+    # explain/prob paths actually serve THIS label geometry (the old
+    # dump was an empty shell: no model, no calibration, ever)
     joblib.dump({"engine": engine, "columns": cols, "armed": gate,
+                 "model": artifacts.get("model"),
+                 "calibrator": artifacts.get("calibrator"),
                  "probs_head": float(probs.dropna().iloc[0])
                  if probs.notna().any() else 0.5}, ART_MODEL)
     ART_META.write_text(json.dumps({

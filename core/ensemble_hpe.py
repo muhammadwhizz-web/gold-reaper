@@ -205,7 +205,11 @@ class EnsembleHPE:
                    or float(m.get("mf_inside", 0) or 0)
                    or float(m.get("mf_harami_bear", 0) or 0))
         confirmed = bear or (neutral and cpos <= 0.4)
-        ok_path = (vel <= 0.5) and (not np.isnan(er) and er >= -0.1
+        # mirror of the bull branch: bear confirmations require the path
+        # efficiency to NOT be strongly upward (er <= 0.1). The historical
+        # copy-paste (er >= -0.1) let strongly BULLISH-efficient bars
+        # confirm shorts.
+        ok_path = (vel <= 0.5) and (not np.isnan(er) and er <= 0.1
                                     or cpos <= 0.5)
         if confirmed and ok_path:
             return Vote("micro", -1, float(np.clip(0.4 + 0.2 * int(bear),
@@ -214,27 +218,33 @@ class EnsembleHPE:
         return Vote("micro", 0, 0.0, "bear anatomy absent")
 
     def _v_cross_asset(self, ctx: dict) -> Vote:
-        """Gold residual vs its cross-asset complex stretched -> reversion vote."""
+        """Gold residual vs its cross-asset complex stretched -> reversion vote.
+
+        f_resid_z_<A> is the gold-vs-anchor regression residual (z-scored):
+        positive = gold RICH relative to what the anchor implies, for ANY
+        anchor sign (DXY beta is negative, silver beta positive - the
+        residual already absorbs that via the fitted beta). Mean reversion
+        therefore shorts rich / longs cheap uniformly. The historical
+        sign-flip for positive-correlation anchors inverted the vote and
+        fired on momentum, not reversion."""
         cross = ctx.get("cross") or {}
         resid_z = cross.get("f_resid_z_DXY", np.nan)
         corr = cross.get("f_corr_DXY", np.nan)
         if np.isnan(resid_z):
             resid_z = cross.get("f_resid_z_SILVER", np.nan)
             corr = cross.get("f_corr_SILVER", np.nan)
-            sign_flip = False            # silver correlates POSITIVELY with gold
-        else:
-            sign_flip = True             # DXY correlates NEGATIVELY with gold
         if np.isnan(resid_z):
             return Vote("cross_asset", 0, 0.0, "cross-asset cold")
-        # resid_z > 0 => gold rich vs the anchor. For a negatively-correlated
-        # anchor (DXY) rich gold + cheap dollar implies long-side stretch.
-        stretch = resid_z if sign_flip else -resid_z
+        anchor = "DXY" if not np.isnan(cross.get("f_resid_z_DXY", np.nan)) \
+            else "SILVER"
+        # resid_z > 0 => gold rich vs the anchor (any anchor sign)
+        stretch = resid_z
         if stretch > 1.2 and (np.isnan(corr) or abs(corr) > 0.2):
             return Vote("cross_asset", -1, float(np.clip(stretch / 3, 0.3, 0.9)),
-                        f"gold rich vs anchor z {resid_z:.1f}")
+                        f"gold rich vs {anchor} z {resid_z:.1f}")
         if stretch < -1.2 and (np.isnan(corr) or abs(corr) > 0.2):
             return Vote("cross_asset", 1, float(np.clip(-stretch / 3, 0.3, 0.9)),
-                        f"gold cheap vs anchor z {resid_z:.1f}")
+                        f"gold cheap vs {anchor} z {resid_z:.1f}")
         return Vote("cross_asset", 0, 0.0, f"resid z {resid_z:.1f} in band")
 
     def _v_news(self, ctx: dict) -> Vote:
@@ -273,20 +283,23 @@ class EnsembleHPE:
         net = 0.0
         strength_sum = 0.0
         votes: dict[str, Vote] = {}
-        for name, fn in voters.items():          # pass 1: the seven propoents
+        net7 = 0.0
+        for name, fn in voters.items():          # pass 1: the seven proponents
             v = fn(ctx)
             votes[name] = v
-            net += v.direction * v.strength
-        pre_lean = 1 if net > 0 else -1 if net < 0 else 0
+            net7 += v.direction * v.strength
+        pre_lean = 1 if net7 > 0 else -1 if net7 < 0 else 0
         votes["micro"] = self._v_micro(ctx, pre_lean)   # pass 2: confirmation
 
+        net = net7   # the seven are already counted; add micro exactly once
         for name, v in votes.items():
             d.votes[name] = {"dir": v.direction, "strength": round(v.strength, 3),
                              "reason": v.reason}
             d.explain.append(
                 f"{name}: {'LONG' if v.direction > 0 else 'SHORT' if v.direction < 0 else 'abstain'}"
                 f" ({v.strength:.2f}) {v.reason}")
-            net += v.direction * v.strength
+            if name == "micro":
+                net += v.direction * v.strength
             if v.direction != 0:
                 strength_sum += v.strength
 
