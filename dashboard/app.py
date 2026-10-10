@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
@@ -930,7 +930,16 @@ def api_standby_get() -> JSONResponse:
 
 
 @app.post("/api/standby")
-def api_standby_post(body: dict) -> JSONResponse:
+def api_standby_post(request: Request, body: dict) -> JSONResponse:
+    # CSRF guard: a cross-origin no-cors POST cannot set Content-Type
+    # application/json (that forces a CORS preflight, which this API
+    # never answers). The old endpoint accepted ANY post - a random
+    # webpage could toggle the kill-switch, including turning trading
+    # back ON, and browsers auto-attach cached Basic credentials.
+    ctype = (request.headers.get("content-type") or "").split(";")[0].strip()
+    if ctype != "application/json":
+        return JSONResponse({"error": "content-type must be application/json"},
+                            status_code=415)
     on = bool(body.get("on"))
     return JSONResponse({"on": set_standby(on)})
 

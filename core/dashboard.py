@@ -11,7 +11,11 @@ Run:  python core/dashboard.py          (or the bot spawns it with --dashboard)
 """
 from __future__ import annotations
 
+import base64
+import html
 import json
+import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -29,6 +33,47 @@ except ImportError:  # pragma: no cover
 import uvicorn  # noqa: E402
 
 app = FastAPI(title="GOLD REAPER APEX", docs_url=None, redoc_url=None)
+
+
+class _BasicAuth:
+    """Same gate as dashboard/app.py: when DASHBOARD_USER/DASHBOARD_PASS
+    are set, every route demands HTTP basic auth (timing-safe). The
+    :8050 console previously shipped with NO auth at all while
+    resolve_dashboard_bind only checked that credentials exist for a
+    remote bind - a 0.0.0.0 bind was publicly unauthenticated."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+        self.user = os.getenv("DASHBOARD_USER", "").strip()
+        self.pwd = os.getenv("DASHBOARD_PASS", "").strip()
+        self.enabled = bool(self.user and self.pwd)
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http" or not self.enabled:
+            await self.app(scope, receive, send)
+            return
+        headers = dict(scope.get("headers", []))
+        raw = headers.get(b"authorization", b"")
+        ok = False
+        if raw.startswith(b"Basic "):
+            try:
+                decoded = base64.b64decode(raw[6:]).decode("utf-8", "replace")
+                user, _, pwd = decoded.partition(":")
+                ok = secrets.compare_digest(user, self.user) and \
+                    secrets.compare_digest(pwd, self.pwd)
+            except Exception:  # noqa: BLE001
+                ok = False
+        if ok:
+            await self.app(scope, receive, send)
+            return
+        await send({"type": "http.response.start", "status": 401,
+                    "headers": [(b"www-authenticate",
+                                 b'Basic realm="GOLD//REAPER"'),
+                                (b"content-length", b"0")]})
+        await send({"type": "http.response.body", "body": b""})
+
+
+app.add_middleware(_BasicAuth)
 
 
 def _read_json(path: Path, default):
@@ -168,14 +213,16 @@ def index():
     for a in reversed(audits):
         d = a.get("data", {})
         summary = d.get("why") or d.get("message") or d.get("event") or ""
-        audit_html += (f"<tr><td>{str(a.get('ts',''))[:19]}</td>"
-                       f"<td>{a.get('kind','')}</td>"
-                       f"<td>{str(summary)[:90]}</td></tr>")
+        audit_html += (f"<tr><td>{html.escape(str(a.get('ts',''))[:19])}</td>"
+                       f"<td>{html.escape(str(a.get('kind','')))}</td>"
+                       f"<td>{html.escape(str(summary)[:90])}</td></tr>")
 
-    head_html = "".join(f"<th>{h}</th>" for h in (rows[0] if rows else []))
+    head_html = "".join(f"<th>{html.escape(str(h))}</th>"
+                        for h in (rows[0] if rows else []))
     body_html = ""
     for r in reversed(rows[1:]):
-        body_html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
+        body_html += "<tr>" + "".join(f"<td>{html.escape(str(c))}</td>"
+                                      for c in r) + "</tr>"
 
     return PAGE.format(
         now=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
@@ -193,11 +240,13 @@ def index():
         brk_cls="latched" if brk.get("latched") else "ok",
         risk_pct=risk.get("risk_fraction_now", "-"),
         recovery="ON" if risk.get("recovery_mode") else "off",
-        regime=regime.get("regime", "—"),
-        regime_engine=f"engine {regime.get('engine', '-')} · p={regime.get('probability', '-')}",
+        regime=html.escape(str(regime.get("regime", "—"))),
+        regime_engine=html.escape(
+            f"engine {regime.get('engine', '-')} · p={regime.get('probability', '-')}"),
         sentiment=f"{news.get('sentiment', 0):+.2f}" if news else "—",
-        news_note=(f"next: {news.get('next_event', '')[:40]} "
-                   f"in {news.get('min_to_event', '-')}min") if news else "no data",
+        news_note=html.escape(
+            (f"next: {news.get('next_event', '')[:40]} "
+             f"in {news.get('min_to_event', '-')}min") if news else "no data"),
         audit_rows=audit_html or "<tr><td colspan=3>silent</td></tr>",
         trade_head=head_html or "<th>no trades yet</th>",
         trade_rows=body_html,
