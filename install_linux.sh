@@ -142,6 +142,11 @@ if [ "$SRC" != "$APPDIR" ]; then
       && rm -rf "$APPDIR/.git" "$APPDIR/.venv" "$APPDIR/venv" "$APPDIR/data" "$APPDIR/.env" "$APPDIR/logs"; }
 fi
 mkdir -p "$APPDIR/data"
+# data/ is BOTH user state (excluded above so reinstalls never wipe it) AND
+# a code package (data/ingest_multi_tf.py etc.) the 12-step health gate runs.
+# Restore the code files; leave user state alone. (installer-e2e caught this:
+# fresh installs failed health step 5 with No such file 'data/ingest_multi_tf.py')
+cp -f "$SRC"/data/*.py "$APPDIR/data"/ 2>/dev/null || true
 ln -sfn "app/data/reaper.log" "$SHARE/logs/reaper.log"
 ok "app in place (existing data/ + .env preserved)"
 

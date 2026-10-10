@@ -21,7 +21,7 @@ jobs:
         include:
           - { os: ubuntu-22.04, script: install_linux.sh }
           - { os: ubuntu-24.04, script: install_linux.sh }
-          - { os: macos-13,     script: install_macos.sh }
+          - { os: macos-15,     script: install_macos.sh }
           - { os: macos-14,     script: install_macos.sh }
           - { os: windows-2022, script: install_windows.ps1 }
     name: e2e (${{ matrix.os }})

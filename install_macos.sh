@@ -81,6 +81,9 @@ if [ "$SRC" != "$APPDIR" ]; then
     "$SRC"/ "$APPDIR"/
 fi
 mkdir -p "$APPDIR/data" "$APPDIR/logs"
+# data/ is BOTH user state (excluded above) AND a code package the health
+# gate runs (data/ingest_multi_tf.py). Restore the code, keep the state.
+cp -f "$SRC"/data/*.py "$APPDIR/data"/ 2>/dev/null || true
 
 # ── 4. venv at project root + pinned install ───────────────────
 step "creating venv at $APPDIR/.venv (project root)"

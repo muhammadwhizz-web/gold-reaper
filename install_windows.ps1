@@ -109,6 +109,9 @@ New-Item -ItemType Directory -Force -Path $AppDir, $LogsDir | Out-Null
 robocopy $Src $AppDir /MIR /XD .git .venv venv __pycache__ data logs installer/output /XF .env | Out-Null
 if ($LASTEXITCODE -ge 8) { Die "robocopy failed (code $LASTEXITCODE)" }
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "data") | Out-Null
+# data/ is BOTH user state (excluded above) AND a code package the health
+# gate runs (data/ingest_multi_tf.py). Restore the code, keep the state.
+Copy-Item -Path (Join-Path $Src "data\*.py") -Destination (Join-Path $AppDir "data") -Force -ErrorAction SilentlyContinue
 Ok "app in place (existing data/ + .env preserved)"
 
 # ── 5. venv at project root + pinned install ───────────────────

@@ -13,5 +13,10 @@ python-dotenv>=1.0.0
 # shipped console's SSE transport (dashboard/app.py) - documented deviation
 # from the minimal repair-spec list: the console ships in paper installs
 sse-starlette>=2.0.0
+# HTTP probe client for the shipped 12-step health gate + doctor
+# (installer/health_check.py step 11 probes /health via FastAPI TestClient;
+#  starlette treats this client as an optional extra - without it a FRESH
+#  runtime venv fails its own health gate, caught by installer-e2e)
+httpx>=0.27.0,<0.29
 # colored console on Windows (core/logger.py import guard)
 colorama>=0.4.6; sys_platform == "win32"
